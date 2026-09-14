@@ -24,7 +24,7 @@ Three UiPath bots automate outpatient appointment booking, reminders and conflic
 | Phase | Weeks | Status |
 |---|---|---|
 | 1 — Process Analysis | 1 | ✅ Complete |
-| 2 — RPA Design | 2 | ⬜ Not started |
+| 2 — RPA Design | 2 | ✅ Complete |
 | 3 — Development | 3–4 | ⬜ Not started |
 | 4 — Testing & Deployment | 5–6 | ⬜ Not started |
 
@@ -36,6 +36,13 @@ Three UiPath bots automate outpatient appointment booking, reminders and conflic
 - [`automation_targets.csv`](docs/phase1/automation_targets.csv) — 35 tasks scored for automation fit
 - [`data_model.md`](docs/phase1/data_model.md) — full schema for the mock HMS
 - [`hms_interfaces.md`](docs/phase1/hms_interfaces.md) — UI selectors and REST contract the bots depend on
+
+**Phase 2 — RPA Design**
+- [`bot_scheduling.md`](docs/phase2/bot_scheduling.md) — flowchart, four-pass slot allocation algorithm, optimistic locking
+- [`bot_reminder.md`](docs/phase2/bot_reminder.md) — T-24h/T-2h schedule, channel decision tree, retry and idempotency
+- [`bot_conflict.md`](docs/phase2/bot_conflict.md) — four conflict types, resolution strategy each, safety rails
+- [`rules.yaml`](docs/phase2/rules.yaml) — every tunable business rule, externalised
+- [`architecture.md`](docs/phase2/architecture.md) — component, sequence and data-flow diagrams
 
 [`PROJECT_BRIEF_v2.md`](PROJECT_BRIEF_v2.md) — scope, tech stack and phase plan.
 
