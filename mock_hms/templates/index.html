@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Book an appointment · {{ hospital_name }}{% endblock %}
+{% block body %}
+
+<h1>Book an appointment</h1>
+<p class="sub">Submit a request and it is queued for the Scheduling Bot, which finds the
+best available slot and confirms by SMS or email.</p>
+
+{% if result %}
+<div class="note n-ok" data-automation-id="req-result">
+  <strong>Request received — reference
+  <span data-automation-id="req-reference">{{ result.reference }}</span></strong>
+  <ul>
+    <li>Queue status: <code data-automation-id="req-queue-status">{{ result.queue_status }}</code></li>
+    {% if result.queued %}
+      <li>Handed to the Orchestrator <code>BookingRequests</code> queue. The Scheduling Bot
+          picks it up on its next run.</li>
+    {% else %}
+      <li>Held locally and will be pushed to Orchestrator by the retry sweep.
+          {% if result.push_error %}<br><small>{{ result.push_error }}</small>{% endif %}</li>
+    {% endif %}
+  </ul>
+</div>
+{% endif %}
+
+{% if errors %}
+<div class="note n-bad" data-automation-id="req-errors">
+  <strong>Please fix the following:</strong>
+  <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<form method="post" class="panel">
+  <div class="grid g2">
+    <div class="field">
+      <label for="patient_name">Full name</label>
+      <input type="text" id="patient_name" name="patient_name"
+             data-automation-id="req-name" value="{{ form.patient_name or '' }}" required>
+    </div>
+    <div class="field">
+      <label for="phone">Phone (E.164)</label>
+      <input type="text" id="phone" name="phone" placeholder="+919876543210"
+             data-automation-id="req-phone" value="{{ form.phone or '' }}" required>
+    </div>
+    <div class="field">
+      <label for="email">Email (optional)</label>
+      <input type="text" id="email" name="email"
+             data-automation-id="req-email" value="{{ form.email or '' }}">
+    </div>
+    <div class="field">
+      <label for="department_code">Department</label>
+      <select id="department_code" name="department_code" data-automation-id="req-department" required>
+        <option value="">— select —</option>
+        {% for d in departments %}
+        <option value="{{ d.code }}" {% if form.department_code == d.code %}selected{% endif %}>
+          {{ d.name }} ({{ d.code }})
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="preferred_doctor_id">Preferred doctor</label>
+      <select id="preferred_doctor_id" name="preferred_doctor_id" data-automation-id="req-doctor">
+        <option value="">Any</option>
+        {% for doc in doctors %}
+        <option value="{{ doc.doctor_id }}"
+          {% if form.preferred_doctor_id and form.preferred_doctor_id|string == doc.doctor_id|string %}selected{% endif %}>
+          {{ doc.full_name }} — {{ doc.department.name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="time_band">Preferred time</label>
+      <select id="time_band" name="time_band" data-automation-id="req-time-band">
+        <option value="ANY" {% if form.time_band == 'ANY' %}selected{% endif %}>Any time</option>
+        <option value="MORNING" {% if form.time_band == 'MORNING' %}selected{% endif %}>Morning</option>
+        <option value="AFTERNOON" {% if form.time_band == 'AFTERNOON' %}selected{% endif %}>Afternoon</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="preferred_date_from">Earliest date</label>
+      <input type="date" id="preferred_date_from" name="preferred_date_from"
+             data-automation-id="req-date-from" value="{{ form.preferred_date_from or '' }}" required>
+    </div>
+    <div class="field">
+      <label for="preferred_date_to">Latest date</label>
+      <input type="date" id="preferred_date_to" name="preferred_date_to"
+             data-automation-id="req-date-to" value="{{ form.preferred_date_to or '' }}" required>
+    </div>
+    <div class="field">
+      <label for="urgency">Urgency</label>
+      <select id="urgency" name="urgency" data-automation-id="req-urgency">
+        <option value="NORMAL" {% if form.urgency == 'NORMAL' %}selected{% endif %}>Normal</option>
+        <option value="HIGH" {% if form.urgency == 'HIGH' %}selected{% endif %}>High</option>
+        <option value="URGENT" {% if form.urgency == 'URGENT' %}selected{% endif %}>Urgent</option>
+      </select>
+    </div>
+    <div class="field check" style="align-self:end;margin-bottom:22px">
+      <input type="checkbox" id="is_follow_up" name="is_follow_up"
+             data-automation-id="req-is-followup" {% if form.is_follow_up %}checked{% endif %}>
+      <label for="is_follow_up">This is a follow-up visit</label>
+    </div>
+  </div>
+
+  <div class="field">
+    <label for="reason">Reason for visit</label>
+    <textarea id="reason" name="reason" data-automation-id="req-reason">{{ form.reason or '' }}</textarea>
+  </div>
+
+  <button type="submit" data-automation-id="req-submit">Submit request</button>
+</form>
+
+<div class="note n-info">
+  <strong>What happens next.</strong> The request is validated here, then pushed to the
+  Orchestrator <code>BookingRequests</code> queue. The Scheduling Bot looks the patient up by
+  phone, scrapes the doctor schedule, scores the available slots against
+  <code>rules.yaml</code>, books through the admin form, mirrors the row into
+  <code>appointments.xlsx</code> and sends a confirmation.
+</div>
+
+{% endblock %}
