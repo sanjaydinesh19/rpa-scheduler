@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Patients · {{ hospital_name }}{% endblock %}
+{% block body %}
+
+<h1>Patient search &amp; registration</h1>
+<p class="sub">The Scheduling Bot always searches by <strong>phone</strong> — it is the only
+reliably unique field, and it is what stops duplicate records being created.</p>
+
+{% if new_patient %}
+<div class="note n-ok">
+  Registered <strong>{{ new_patient.full_name }}</strong> —
+  MRN <code data-automation-id="pat-new-mrn">{{ new_patient.mrn }}</code>,
+  patient id <code data-automation-id="pat-new-id">{{ new_patient.patient_id }}</code>
+</div>
+{% endif %}
+
+{% if errors %}
+<div class="note n-bad">
+  <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<div class="panel">
+  <h2>Search</h2>
+  <form method="get" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+    <div class="field" style="flex:1;min-width:260px;margin:0">
+      <label for="q">Phone number (or name)</label>
+      <input type="text" id="q" name="q" data-automation-id="pat-search-input"
+             value="{{ query }}" placeholder="+919876543210">
+    </div>
+    <button type="submit" data-automation-id="pat-search-btn">Search</button>
+  </form>
+</div>
+
+{% if searched %}
+<div class="panel">
+  <h2>Results</h2>
+  {% if results %}
+  <div class="scroll">
+  <table data-automation-id="pat-results-table">
+    <thead><tr>
+      <th>Patient ID</th><th>MRN</th><th>Name</th><th>Phone</th><th>Email</th>
+      <th>Age</th><th>Channel</th><th>Consent</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for p in results %}
+      <tr data-automation-id="pat-row">
+        <td data-automation-id="pat-row-id">{{ p.patient_id }}</td>
+        <td>{{ p.mrn }}</td>
+        <td data-automation-id="pat-row-name">{{ p.full_name }}</td>
+        <td data-automation-id="pat-row-phone">{{ p.phone }}</td>
+        <td>{{ p.email or '—' }}</td>
+        <td>{{ p.age }}{% if p.is_senior %} <span class="tag t-info">senior</span>{% endif %}</td>
+        <td>{{ p.preferred_channel }}</td>
+        <td>
+          {% if p.sms_consent %}<span class="tag t-ok">SMS</span>{% else %}<span class="tag t-mute">no SMS</span>{% endif %}
+          {% if p.email_consent and p.email %}<span class="tag t-ok">email</span>{% endif %}
+        </td>
+        <td><a class="btn sm" href="{{ url_for('ui.book', patient_id=p.patient_id) }}">Book</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+    <p class="empty" data-automation-id="pat-no-results">No results for "{{ query }}"</p>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="panel">
+  <h2 data-automation-id="pat-new-btn">Register a new patient</h2>
+  <form method="post">
+    <input type="hidden" name="action" value="register">
+    <input type="hidden" name="q" value="{{ query }}">
+    <div class="grid g2">
+      <div class="field">
+        <label for="full_name">Full name</label>
+        <input type="text" id="full_name" name="full_name" data-automation-id="pat-new-name" required>
+      </div>
+      <div class="field">
+        <label for="phone">Phone (E.164)</label>
+        <input type="text" id="phone" name="phone" data-automation-id="pat-new-phone"
+               placeholder="+919876543210" required>
+      </div>
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="text" id="email" name="email" data-automation-id="pat-new-email">
+      </div>
+      <div class="field">
+        <label for="date_of_birth">Date of birth</label>
+        <input type="date" id="date_of_birth" name="date_of_birth" data-automation-id="pat-new-dob">
+      </div>
+      <div class="field">
+        <label for="gender">Gender</label>
+        <select id="gender" name="gender" data-automation-id="pat-new-gender">
+          <option value="M">M</option><option value="F">F</option><option value="O">O</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="preferred_channel">Preferred channel</label>
+        <select id="preferred_channel" name="preferred_channel" data-automation-id="pat-new-channel">
+          <option value="SMS">SMS</option>
+          <option value="EMAIL">Email</option>
+          <option value="BOTH">Both</option>
+        </select>
+      </div>
+    </div>
+    <button type="submit" data-automation-id="pat-new-save">Register patient</button>
+  </form>
+</div>
+
+{% endblock %}
