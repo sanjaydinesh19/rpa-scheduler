@@ -52,7 +52,10 @@ def _get_token(cfg) -> str:
         return _token_cache["access_token"]
 
 
-def add_queue_item(cfg: dict, queue_name: str, payload: dict, reference: str | None = None) -> str:
+def add_queue_item(
+    cfg: dict, queue_name: str, payload: dict, reference: str | None = None,
+    priority: str = "Normal",
+) -> str:
     """Returns the Orchestrator queue item id. Raises OrchestratorError."""
     token = _get_token(cfg)
     url = (
@@ -67,7 +70,7 @@ def add_queue_item(cfg: dict, queue_name: str, payload: dict, reference: str | N
     body = {
         "itemData": {
             "Name": queue_name,
-            "Priority": "Normal",
+            "Priority": priority,
             "SpecificContent": payload,
             "Reference": reference or payload.get("RequestId"),
         }
@@ -100,6 +103,9 @@ def push_booking_request(app, booking_request) -> tuple[bool, str | None]:
             cfg["booking_queue"],
             booking_request.to_queue_payload(),
             reference=booking_request.reference,
+            # Urgent requests are dequeued first. Queue priority changes *when*
+            # an item is processed, never *which slot* it gets.
+            priority="High" if booking_request.urgency == "URGENT" else "Normal",
         )
         booking_request.queue_status = "QUEUED"
         booking_request.queue_item_id = item_id
@@ -111,6 +117,46 @@ def push_booking_request(app, booking_request) -> tuple[bool, str | None]:
         booking_request.queue_status = "PENDING_PUSH"
         booking_request.push_error = str(exc)[:255]
         db.session.commit()
+        return False, str(exc)
+
+
+SEVERITY_TO_PRIORITY = {"HIGH": "High", "MEDIUM": "Normal", "LOW": "Low"}
+
+
+def push_conflict(app, conflict) -> tuple[bool, str | None]:
+    """Push one ConflictLog row to the Conflicts queue. Never raises.
+
+    The queue reference is CFL-{conflict_id} and the queue enforces unique
+    references, so pushing the same conflict twice is harmless. That is what
+    lets the Conflict Bot's sweep re-enqueue every OPEN conflict to cover a push
+    that failed here, without creating duplicates.
+    """
+    cfg = _cfg_from_app(app)
+    if not cfg:
+        return False, "Orchestrator not configured"
+
+    payload = {
+        "ConflictId": conflict.conflict_id,
+        "ConflictType": conflict.conflict_type,
+        "Severity": conflict.severity,
+        "AppointmentId": conflict.appointment_id,
+        "RelatedAppointmentId": conflict.related_appointment_id,
+        "SlotId": conflict.slot_id,
+        "DetectedBy": conflict.detected_by,
+        "Detail": conflict.detail or "",
+    }
+    payload = {k: v for k, v in payload.items() if v is not None}
+    try:
+        item_id = add_queue_item(
+            cfg,
+            cfg["conflict_queue"],
+            payload,
+            reference=f"CFL-{conflict.conflict_id}",
+            priority=SEVERITY_TO_PRIORITY.get(conflict.severity, "Normal"),
+        )
+        return True, item_id
+    except Exception as exc:
+        log.warning("Conflict push failed for %s: %s", conflict.conflict_id, exc)
         return False, str(exc)
 
 
