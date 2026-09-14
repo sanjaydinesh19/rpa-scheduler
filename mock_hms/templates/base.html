@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ hospital_name }}{% endblock %}</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --panel:#ffffff; --ink:#1b1f24; --muted:#5b6472;
+    --line:#dfe3e8; --accent:#1f5f8b; --accent-soft:#e8f0f6;
+    --ok:#1f7a4d; --ok-soft:#e6f4ec; --warn:#8a5a00; --warn-soft:#fdf3e0;
+    --bad:#a32020; --bad-soft:#fbeaea;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--ink)}
+  header{background:var(--accent);color:#fff;padding:12px 20px;display:flex;
+         align-items:center;gap:20px;flex-wrap:wrap}
+  header .brand{font-weight:600;font-size:15px;letter-spacing:.2px}
+  header nav{display:flex;gap:4px;flex-wrap:wrap}
+  header nav a{color:#dce9f2;text-decoration:none;padding:5px 10px;border-radius:4px;font-size:13px}
+  header nav a:hover{background:rgba(255,255,255,.14);color:#fff}
+  main{max-width:1180px;margin:22px auto;padding:0 20px}
+  h1{font-size:20px;margin:0 0 4px}
+  h2{font-size:15px;margin:0 0 12px;color:var(--muted);font-weight:600;
+     text-transform:uppercase;letter-spacing:.06em}
+  .sub{color:var(--muted);margin:0 0 20px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;
+         padding:18px;margin-bottom:18px}
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+  .g4{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+  label{display:block;font-size:12px;font-weight:600;color:var(--muted);
+        margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+  input[type=text],input[type=date],input[type=datetime-local],input[type=email],
+  input[type=number],select,textarea{
+    width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:4px;
+    font:inherit;background:#fff;color:var(--ink)}
+  textarea{min-height:64px;resize:vertical}
+  .field{margin-bottom:14px}
+  .check{display:flex;align-items:center;gap:8px}
+  .check label{margin:0;text-transform:none;letter-spacing:0;font-size:13px}
+  button,.btn{background:var(--accent);color:#fff;border:0;padding:9px 16px;
+              border-radius:4px;font:inherit;font-weight:600;cursor:pointer;
+              text-decoration:none;display:inline-block}
+  button:hover{background:#17496b}
+  button.sec{background:#fff;color:var(--accent);border:1px solid var(--line)}
+  button.sm{padding:5px 10px;font-size:12px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);
+        vertical-align:top}
+  th{background:#f0f2f5;font-size:11px;text-transform:uppercase;
+     letter-spacing:.05em;color:var(--muted);font-weight:600}
+  tbody tr:hover{background:#fafbfc}
+  .scroll{overflow-x:auto}
+  .tag{display:inline-block;padding:2px 7px;border-radius:3px;font-size:11px;
+       font-weight:600;letter-spacing:.03em}
+  .t-ok{background:var(--ok-soft);color:var(--ok)}
+  .t-warn{background:var(--warn-soft);color:var(--warn)}
+  .t-bad{background:var(--bad-soft);color:var(--bad)}
+  .t-mute{background:#eef0f3;color:var(--muted)}
+  .t-info{background:var(--accent-soft);color:var(--accent)}
+  .note{padding:12px 14px;border-radius:5px;margin-bottom:16px;font-size:13px}
+  .n-ok{background:var(--ok-soft);border:1px solid #bfe0cd;color:#155c39}
+  .n-bad{background:var(--bad-soft);border:1px solid #edc4c4;color:#7d1a1a}
+  .n-info{background:var(--accent-soft);border:1px solid #c6dcea;color:#174b6d}
+  .n-ok ul,.n-bad ul{margin:6px 0 0 18px;padding:0}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px}
+  .stat .v{font-size:26px;font-weight:600;line-height:1.1}
+  .stat .k{font-size:11px;text-transform:uppercase;letter-spacing:.06em;
+           color:var(--muted);margin-top:4px}
+  .empty{color:var(--muted);font-style:italic;padding:14px 0}
+  code{background:#eef0f3;padding:1px 5px;border-radius:3px;font-size:12px}
+  footer{max-width:1180px;margin:30px auto;padding:0 20px;color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">{{ hospital_name }}</span>
+  <nav>
+    <a href="{{ url_for('ui.index') }}" data-automation-id="nav-book">Book</a>
+    <a href="{{ url_for('ui.patients') }}" data-automation-id="nav-patients">Patients</a>
+    <a href="{{ url_for('ui.schedule') }}" data-automation-id="nav-schedule">Schedule</a>
+    <a href="{{ url_for('ui.book') }}" data-automation-id="nav-admin-book">Booking Form</a>
+    <a href="{{ url_for('ui.conflicts') }}" data-automation-id="nav-conflicts">Conflicts</a>
+    <a href="{{ url_for('ui.reschedule') }}" data-automation-id="nav-reschedule">Reschedule</a>
+    <a href="{{ url_for('ui.doctors_page') }}" data-automation-id="nav-doctors">Doctors</a>
+    <a href="{{ url_for('ui.dashboard') }}" data-automation-id="nav-dashboard">Dashboard</a>
+  </nav>
+</header>
+<main>
+{% block body %}{% endblock %}
+</main>
+<footer>
+  Mock HMS for the rpa-scheduler project · rules v{{ rules.version }} ·
+  <a href="/api/v1/health">/api/v1/health</a>
+</footer>
+</body>
+</html>
