@@ -483,7 +483,21 @@ def raise_conflict(
     )
     db.session.add(c)
     db.session.commit()
+    _push_conflict_safely(c)
     return c
+
+
+def _push_conflict_safely(conflict: ConflictLog) -> None:
+    """Hand a new conflict to the Conflicts queue so the bot reacts in seconds
+    rather than at the next 15-minute sweep. A failed push is not an error here:
+    the row is already OPEN, and the sweep re-enqueues every OPEN conflict."""
+    try:
+        from flask import current_app
+        from .orchestrator_client import push_conflict
+
+        push_conflict(current_app._get_current_object(), conflict)
+    except RuntimeError:
+        pass  # no app context — the sweep will enqueue it
 
 
 def detect_double_bookings() -> list[dict]:
