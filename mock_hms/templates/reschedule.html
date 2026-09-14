@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Reschedule · {{ hospital_name }}{% endblock %}
+{% block body %}
+
+<h1>Reschedule an appointment</h1>
+<p class="sub">Used by the Conflict Resolution Bot to move a patient, and by a clerk to
+action an escalated item.</p>
+
+{% if result %}
+<div class="note n-ok" data-automation-id="rsc-success">
+  <strong>Rescheduled {{ result.reference_no }}</strong>
+  <ul>
+    <li>Now {{ result.appointment_datetime.strftime('%Y-%m-%d %H:%M') }} with
+        {{ result.doctor.full_name }}</li>
+    <li>Slot <code>{{ result.slot_id }}</code> · move
+        {{ result.reschedule_count }} of {{ rules.max_reschedules_per_appointment }}</li>
+    <li>Excel mirror marked stale — the reconcile sweep will refresh it</li>
+  </ul>
+</div>
+{% endif %}
+
+{% if error_code %}
+<div class="note n-bad" data-automation-id="rsc-error">
+  <strong><span data-automation-id="rsc-error-code">{{ error_code }}</span></strong>
+  <div>{{ error_message }}</div>
+  {% if error_code in ['TOO_CLOSE_TO_RESCHEDULE','URGENT_NEVER_AUTO_MOVED','AMBIGUOUS_PRIORITY'] %}
+  <div style="margin-top:6px"><small>This is a safety rail, not a bug. The bot escalates
+  here; a clerk can override with the force checkbox below.</small></div>
+  {% endif %}
+</div>
+{% endif %}
+
+<form method="post" class="panel">
+  <div class="grid g2">
+    <div class="field">
+      <label for="reference">Appointment reference</label>
+      <input type="text" id="reference" name="reference" data-automation-id="rsc-reference"
+             value="{{ reference }}" placeholder="APT-2026-000412" required>
+    </div>
+    <div class="field">
+      <label for="new_slot_id">New slot ID</label>
+      <input type="text" id="new_slot_id" name="new_slot_id" data-automation-id="rsc-new-slot"
+             value="{{ new_slot_id }}" required>
+    </div>
+  </div>
+
+  <div class="field">
+    <label for="reason">Reason for the move</label>
+    <textarea id="reason" name="reason" data-automation-id="rsc-reason"></textarea>
+  </div>
+
+  <div class="field check">
+    <input type="checkbox" id="force" name="force" data-automation-id="rsc-force">
+    <label for="force">Override the safety rails (clerk acting on an escalated item)</label>
+  </div>
+
+  <input type="hidden" name="actor" value="ConflictResolutionBot">
+  <button type="submit" data-automation-id="rsc-submit">Reschedule</button>
+</form>
+
+<div class="note n-info">
+  <strong>Rails enforced here:</strong> no move inside
+  {{ rules.min_reschedule_notice_hours }} hours of the appointment, no automatic move of an
+  <code>URGENT</code> appointment, and no more than
+  {{ rules.max_reschedules_per_appointment }} automatic moves per appointment. Every
+  successful move writes an audit row and notifies the patient before the transaction closes.
+</div>
+
+{% endblock %}
