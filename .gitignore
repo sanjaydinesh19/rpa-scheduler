@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Environment
+.env
+.env.local
+
+# Database — regenerate with `python -m mock_hms.seed`
+*.db
+*.sqlite
+*.sqlite3
+mock_hms/instance/
+
+# Excel lock files
+~$*.xlsx
+
+# UiPath Studio build output
+bots/**/.local/
+bots/**/.settings/
+bots/**/.objects/
+bots/**/.tmh/
+bots/**/obj/
+*.nupkg
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
