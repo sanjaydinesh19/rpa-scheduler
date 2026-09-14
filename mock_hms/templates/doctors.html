@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Doctors · {{ hospital_name }}{% endblock %}
+{% block body %}
+
+<h1>Doctor roster &amp; unavailability</h1>
+<p class="sub">Marking a doctor unavailable raises a <code>DOCTOR_UNAVAILABLE</code> conflict.
+This is the demo trigger: save a half-day of leave and watch the Conflict Bot block the
+slots and cascade-reschedule every affected patient.</p>
+
+{% if message %}<div class="note n-ok" data-automation-id="doc-message">{{ message }}</div>{% endif %}
+
+<div class="panel">
+  <h2>Mark unavailable</h2>
+  <form method="post">
+    <div class="grid g2">
+      <div class="field">
+        <label for="doctor_id">Doctor</label>
+        <select id="doctor_id" name="doctor_id" data-automation-id="doc-select" required>
+          {% for d in doctors %}
+          <option value="{{ d.doctor_id }}">{{ d.full_name }} — {{ d.department.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="reason">Reason</label>
+        <input type="text" id="reason" name="reason" data-automation-id="doc-unavail-reason"
+               placeholder="Emergency surgery">
+      </div>
+      <div class="field">
+        <label for="unavail_from">Unavailable from</label>
+        <input type="datetime-local" id="unavail_from" name="unavail_from"
+               data-automation-id="doc-unavail-from" required>
+      </div>
+      <div class="field">
+        <label for="unavail_to">Unavailable to</label>
+        <input type="datetime-local" id="unavail_to" name="unavail_to"
+               data-automation-id="doc-unavail-to" required>
+      </div>
+    </div>
+    <button type="submit" data-automation-id="doc-unavail-save">Save unavailability</button>
+  </form>
+</div>
+
+<div class="panel">
+  <h2>Roster</h2>
+  <div class="scroll">
+  <table data-automation-id="doc-table">
+    <thead><tr>
+      <th>DoctorId</th><th>Name</th><th>Department</th><th>Specialisation</th>
+      <th>Consult (min)</th><th>Daily cap</th><th>Urgent</th><th>Active</th>
+    </tr></thead>
+    <tbody>
+    {% for d in doctors %}
+      <tr data-automation-id="doc-row">
+        <td>{{ d.doctor_id }}</td>
+        <td>{{ d.full_name }}</td>
+        <td>{{ d.department.name }}</td>
+        <td>{{ d.specialisation or '—' }}</td>
+        <td>{{ d.consult_minutes }}</td>
+        <td>{{ d.daily_slot_cap }}</td>
+        <td>{{ 'yes' if d.accepts_urgent else 'no' }}</td>
+        <td>{% if d.is_active %}<span class="tag t-ok">active</span>
+            {% else %}<span class="tag t-mute">inactive</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Recent unavailability</h2>
+  {% if unavail %}
+  <div class="scroll">
+  <table data-automation-id="doc-unavail-table">
+    <thead><tr><th>Id</th><th>Doctor</th><th>From</th><th>To</th><th>Reason</th><th>Swept</th></tr></thead>
+    <tbody>
+    {% for u in unavail %}
+      <tr data-automation-id="doc-unavail-row">
+        <td>{{ u.unavailability_id }}</td>
+        <td>{{ u.doctor.full_name }}</td>
+        <td>{{ u.from_datetime.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td>{{ u.to_datetime.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td>{{ u.reason or '—' }}</td>
+        <td>{% if u.is_processed %}<span class="tag t-ok">yes</span>
+            {% else %}<span class="tag t-warn">pending</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+    <p class="empty">No unavailability recorded.</p>
+  {% endif %}
+</div>
+
+{% endblock %}
