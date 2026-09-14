@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · {{ hospital_name }}{% endblock %}
+{% block body %}
+
+<h1>Operations dashboard</h1>
+<p class="sub">What the automation is actually doing. These are the numbers the Phase 4
+report is built from.</p>
+
+<div class="grid g4" style="margin-bottom:18px">
+  <div class="stat">
+    <div class="v">{{ stats.todays_appointments }}</div>
+    <div class="k">Appointments today</div>
+  </div>
+  <div class="stat">
+    <div class="v">{{ stats.bot_share }}%</div>
+    <div class="k">Booked by bot ({{ stats.booked_by_bot }} of {{ stats.total_active }})</div>
+  </div>
+  <div class="stat">
+    <div class="v">
+      {% if stats.reminder_coverage is none %}—{% else %}{{ stats.reminder_coverage }}%{% endif %}
+    </div>
+    <div class="k">Reminder coverage · next 24h ({{ stats.upcoming_24h }} due)</div>
+  </div>
+  <div class="stat">
+    <div class="v" {% if stats.open_conflicts %}style="color:var(--bad)"{% endif %}>
+      {{ stats.open_conflicts }}
+    </div>
+    <div class="k">Open conflicts{% if stats.escalated_conflicts %}
+      · {{ stats.escalated_conflicts }} escalated{% endif %}</div>
+  </div>
+</div>
+
+<div class="grid g4" style="margin-bottom:18px">
+  <div class="stat">
+    <div class="v">{{ stats.unsynced_to_excel }}</div>
+    <div class="k">Rows not yet in Excel</div>
+  </div>
+  <div class="stat">
+    <div class="v">{{ stats.notifications_sent }}</div>
+    <div class="k">Notifications sent{% if stats.notifications_failed %}
+      · {{ stats.notifications_failed }} failed{% endif %}</div>
+  </div>
+  <div class="stat">
+    <div class="v">{{ stats.available_slots }}</div>
+    <div class="k">Available slots</div>
+  </div>
+  <div class="stat">
+    <div class="v" {% if stats.pending_queue_push %}style="color:var(--warn)"{% endif %}>
+      {{ stats.pending_queue_push }}
+    </div>
+    <div class="k">Requests pending queue push</div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Recent bookings</h2>
+  {% if recent %}
+  <div class="scroll">
+  <table>
+    <thead><tr>
+      <th>Reference</th><th>Patient</th><th>Doctor</th><th>When</th>
+      <th>Priority</th><th>Status</th><th>Source</th><th>Excel</th>
+    </tr></thead>
+    <tbody>
+    {% for a in recent %}
+      <tr>
+        <td>{{ a.reference_no }}</td>
+        <td>{{ a.patient.full_name if a.patient else '—' }}</td>
+        <td>{{ a.doctor.full_name if a.doctor else '—' }}</td>
+        <td>{{ a.appointment_datetime.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td>
+          {% if a.priority == 'URGENT' %}<span class="tag t-bad">URGENT</span>
+          {% elif a.priority == 'HIGH' %}<span class="tag t-warn">HIGH</span>
+          {% else %}<span class="tag t-mute">NORMAL</span>{% endif %}
+        </td>
+        <td>{{ a.status }}</td>
+        <td>{% if a.source == 'BOT' %}<span class="tag t-info">BOT</span>
+            {% else %}<span class="tag t-mute">{{ a.source }}</span>{% endif %}</td>
+        <td>{% if a.synced_to_excel_at %}<span class="tag t-ok">synced</span>
+            {% else %}<span class="tag t-warn">pending</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="empty">No appointments yet.</p>{% endif %}
+</div>
+
+<div class="panel">
+  <h2>Recent conflicts</h2>
+  {% if recent_conflicts %}
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Id</th><th>Type</th><th>Severity</th><th>Status</th>
+               <th>Detected by</th><th>Detail</th></tr></thead>
+    <tbody>
+    {% for c in recent_conflicts %}
+      <tr>
+        <td>{{ c.conflict_id }}</td>
+        <td>{{ c.conflict_type }}</td>
+        <td>{{ c.severity }}</td>
+        <td>{% if c.status == 'OPEN' %}<span class="tag t-warn">OPEN</span>
+            {% elif c.status == 'RESOLVED' %}<span class="tag t-ok">RESOLVED</span>
+            {% else %}<span class="tag t-bad">ESCALATED</span>{% endif %}</td>
+        <td>{{ c.detected_by }}</td>
+        <td style="max-width:360px">{{ c.detail or '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="empty">No conflicts recorded.</p>{% endif %}
+</div>
+
+<div class="panel">
+  <h2>System</h2>
+  <table>
+    <tbody>
+      <tr><td>Patients registered</td><td>{{ stats.patients }}</td></tr>
+      <tr><td>Active doctors</td><td>{{ stats.doctors }}</td></tr>
+      <tr><td>Booking requests received</td><td>{{ stats.requests_total }}</td></tr>
+      <tr><td>Business rules version</td><td><code>{{ rules_version }}</code></td></tr>
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}
