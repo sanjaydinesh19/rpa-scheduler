@@ -203,11 +203,17 @@ def update_patient(patient_id):
 @api.get("/slots")
 @require_api_key
 def get_slots():
+    # date_to defaults to a window *after date_from*, not after today. Anchoring
+    # it to today meant a caller searching from a future date silently got zero
+    # slots back and concluded NO_SLOT_AVAILABLE.
+    d_from = _date_arg("date_from", date.today())
+    d_to = _date_arg("date_to", d_from + timedelta(days=RULES.default_search_window_days))
+
     slots = svc.search_slots(
         department_code=request.args.get("department"),
         doctor_id=request.args.get("doctor_id", type=int),
-        date_from=_date_arg("date_from", date.today()),
-        date_to=_date_arg("date_to", date.today() + timedelta(days=RULES.default_search_window_days)),
+        date_from=d_from,
+        date_to=d_to,
         status=request.args.get("status", "AVAILABLE") or None,
         include_emergency_reserve=request.args.get("include_reserve", "false").lower() == "true",
         limit=request.args.get("limit", 500, type=int),
