@@ -127,7 +127,7 @@ capacity and still fails.</sap2010:Annotation.AnnotationText>
                 <sap2010:Annotation.AnnotationText>Workflows/LookupOrRegisterPatient.xaml — UI AUTOMATION.
 
   Navigate /admin/patients
-  Type Into  [data-automation-id='pat-search-input']  <- Phone (the dedup key)
+  Type Into  [data-automation-id='pat-search-input']  &lt;- Phone (the dedup key)
   Click      [data-automation-id='pat-search-btn']
   If element [data-automation-id='pat-no-results'] exists:
       Click  [data-automation-id='pat-new-btn']
