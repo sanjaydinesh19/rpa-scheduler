@@ -1,0 +1,91 @@
+<Activity mc:Ignorable="sap sap2010" x:Class="HMS_Client"
+ xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+ xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+ xmlns:s="clr-namespace:System;assembly=System.Private.CoreLib"
+ xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
+ xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
+ xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib"
+ xmlns:sd="clr-namespace:System.Data;assembly=System.Data.Common"
+ xmlns:ui="http://schemas.uipath.com/workflow/activities"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <x:Members>
+    <x:Property Name="in_BaseUrl" Type="InArgument(x:String)" />
+    <x:Property Name="in_ApiKey" Type="InArgument(s:Security.SecureString)" />
+    <x:Property Name="in_Method" Type="InArgument(x:String)" />
+    <x:Property Name="in_Path" Type="InArgument(x:String)" />
+    <x:Property Name="in_Body" Type="InArgument(x:String)" />
+    <x:Property Name="in_MaxAttempts" Type="InArgument(x:Int32)" />
+    <x:Property Name="out_StatusCode" Type="OutArgument(x:Int32)" />
+    <x:Property Name="out_ResponseJson" Type="OutArgument(x:String)" />
+    <x:Property Name="out_ErrorCode" Type="OutArgument(x:String)" />
+    <x:Property Name="out_Retryable" Type="OutArgument(x:Boolean)" />
+  </x:Members>
+  <sap2010:ExpressionActivityEditor.ExpressionActivityEditor>VisualBasic</sap2010:ExpressionActivityEditor.ExpressionActivityEditor>
+  <TextExpression.NamespacesForImplementation>
+    <scg:List x:TypeArguments="x:String" Capacity="8">
+      <x:String>System</x:String>
+      <x:String>System.Collections.Generic</x:String>
+      <x:String>System.Data</x:String>
+      <x:String>System.Linq</x:String>
+      <x:String>UiPath.Core</x:String>
+      <x:String>UiPath.Core.Activities</x:String>
+    </scg:List>
+  </TextExpression.NamespacesForImplementation>
+  <TextExpression.ReferencesForImplementation>
+    <scg:List x:TypeArguments="AssemblyReference" Capacity="8">
+      <AssemblyReference>System.Linq</AssemblyReference>
+      <AssemblyReference>UiPath.System.Activities</AssemblyReference>
+      <AssemblyReference>UiPath.WebAPI.Activities</AssemblyReference>
+    </scg:List>
+  </TextExpression.ReferencesForImplementation>
+<Sequence DisplayName="HMS Client" sap2010:WorkflowViewState.IdRef="Sequence_11">
+<sap2010:Annotation.AnnotationText>shared/HMS_Client.xaml — reusable wrapper around the Mock HMS REST API (docs/phase1/hms_interfaces.md Part B and D).</sap2010:Annotation.AnnotationText>
+<Sequence DisplayName="1. Build request" sap2010:WorkflowViewState.IdRef="Sequence_2">
+<sap2010:Annotation.AnnotationText>Every HMS API call from every bot goes through this one workflow, so auth,
+retry and error handling are written exactly once.
+
+The API key arrives as a SecureString from the HMS_ApiKey credential asset.
+Convert it only at the moment of the call and never log it — project.json
+excludes *apikey* and *token* from logged data for the same reason.</sap2010:Annotation.AnnotationText>
+<ui:Comment Text='TODO(Studio): URL = in_BaseUrl.TrimEnd("/") &amp; "/api/v1" &amp; in_Path ; header X-API-Key from in_ApiKey' sap2010:WorkflowViewState.IdRef="Comment_1" />
+</Sequence>
+<TryCatch DisplayName="2. Call with retry" sap2010:WorkflowViewState.IdRef="TryCatch_7">
+<sap2010:Annotation.AnnotationText>Retry ONLY when the response says so. The HMS returns one envelope for every error:
+  {"error_code": "SLOT_TAKEN", "message": "...", "retryable": true}
+
+Branch on error_code and retryable. Never parse the message text.
+
+  2xx                       success, out_ErrorCode = ""
+  retryable = true          wait 2s, 4s, 8s and retry, up to in_MaxAttempts
+                            (INTERNAL_ERROR, and network timeouts)
+  SLOT_TAKEN / SLOT_LOCKED  retryable, but return immediately — the CALLER
+                            retries with a different slot; hammering the same
+                            slot would never succeed
+  retryable = false         return at once with out_ErrorCode set
+  401 UNAUTHORIZED          throw a system exception: the asset is wrong and
+                            every following call will fail the same way
+
+Render's free tier cold-starts after 15 idle minutes, so the first call of a
+run can take 30+ seconds. That is why the timeout is 30s and a timeout counts
+as retryable.</sap2010:Annotation.AnnotationText>
+<TryCatch.Try>
+<Sequence DisplayName="HTTP Request" sap2010:WorkflowViewState.IdRef="Sequence_4">
+<ui:Comment Text="TODO(Studio): HTTP Request: Method in_Method, Endpoint URL, Body in_Body, BodyFormat application/json, Timeout 30000 -&gt; out_StatusCode, out_ResponseJson" sap2010:WorkflowViewState.IdRef="Comment_3" />
+</Sequence>
+</TryCatch.Try>
+<TryCatch.Catches>
+<Catch x:TypeArguments="s:Exception" sap2010:WorkflowViewState.IdRef="Catch_8">
+<ActivityAction x:TypeArguments="s:Exception">
+<ActivityAction.Argument><DelegateInArgument x:TypeArguments="s:Exception" Name="ex" /></ActivityAction.Argument>
+<Sequence DisplayName="Network failure" sap2010:WorkflowViewState.IdRef="Sequence_6">
+<ui:Comment Text='TODO(Studio): If attempts remain: Delay then retry ; else out_ErrorCode = "NETWORK_TIMEOUT", out_Retryable = True' sap2010:WorkflowViewState.IdRef="Comment_5" />
+</Sequence>
+</ActivityAction>
+</Catch>
+</TryCatch.Catches>
+</TryCatch>
+<Sequence DisplayName="3. Parse error envelope" sap2010:WorkflowViewState.IdRef="Sequence_10">
+<ui:Comment Text="TODO(Studio): If out_StatusCode &gt;= 400: Deserialize JSON -&gt; out_ErrorCode = error_code, out_Retryable = retryable" sap2010:WorkflowViewState.IdRef="Comment_9" />
+</Sequence>
+</Sequence>
+</Activity>
