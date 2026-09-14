@@ -1,0 +1,160 @@
+<Activity mc:Ignorable="sap sap2010" x:Class="Main"
+ xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+ xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+ xmlns:s="clr-namespace:System;assembly=System.Private.CoreLib"
+ xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
+ xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
+ xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib"
+ xmlns:sd="clr-namespace:System.Data;assembly=System.Data.Common"
+ xmlns:ui="http://schemas.uipath.com/workflow/activities"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <x:Members>
+    <x:Property Name="in_DryRun" Type="InArgument(x:Boolean)" />
+    <x:Property Name="in_NowOverride" Type="InArgument(x:String)" />
+    <x:Property Name="out_Sent" Type="OutArgument(x:Int32)" />
+    <x:Property Name="out_Skipped" Type="OutArgument(x:Int32)" />
+    <x:Property Name="out_Failed" Type="OutArgument(x:Int32)" />
+  </x:Members>
+  <sap2010:ExpressionActivityEditor.ExpressionActivityEditor>VisualBasic</sap2010:ExpressionActivityEditor.ExpressionActivityEditor>
+  <TextExpression.NamespacesForImplementation>
+    <scg:List x:TypeArguments="x:String" Capacity="8">
+      <x:String>System</x:String>
+      <x:String>System.Collections.Generic</x:String>
+      <x:String>System.Data</x:String>
+      <x:String>System.Linq</x:String>
+      <x:String>UiPath.Core</x:String>
+      <x:String>UiPath.Core.Activities</x:String>
+    </scg:List>
+  </TextExpression.NamespacesForImplementation>
+  <TextExpression.ReferencesForImplementation>
+    <scg:List x:TypeArguments="AssemblyReference" Capacity="8">
+      <AssemblyReference>System.Data.Common</AssemblyReference>
+      <AssemblyReference>System.Linq</AssemblyReference>
+      <AssemblyReference>UiPath.System.Activities</AssemblyReference>
+      <AssemblyReference>UiPath.WebAPI.Activities</AssemblyReference>
+    </scg:List>
+  </TextExpression.ReferencesForImplementation>
+<Sequence DisplayName="Reminder Bot - Main" sap2010:WorkflowViewState.IdRef="Sequence_28">
+<sap2010:Annotation.AnnotationText>REMINDER BOT — implements docs/phase2/bot_reminder.md.
+
+Trigger: Orchestrator time trigger, cron 0 0,30 7-21 * * ?, Asia/Kolkata,
+max concurrent jobs 1, stop if running longer than 20 minutes.
+
+Build the activity tree inside each stage. The stage order is the design.</sap2010:Annotation.AnnotationText>
+<Sequence.Variables>
+<Variable x:TypeArguments="sd:DataTable" Name="dtDue" />
+<Variable x:TypeArguments="sd:DataTable" Name="dtDue24" />
+<Variable x:TypeArguments="sd:DataTable" Name="dtDue2" />
+<Variable x:TypeArguments="sd:DataTable" Name="dtRules" />
+<Variable x:TypeArguments="sd:DataTable" Name="dtTemplates" />
+<Variable x:TypeArguments="scg:Dictionary(x:String, x:Object)" Name="Config" />
+</Sequence.Variables>
+<ui:LogMessage DisplayName="Log - Start" Level="Info" Message='["ReminderBot starting. DryRun=" &amp; in_DryRun.ToString()]' sap2010:WorkflowViewState.IdRef="LogMessage_17" />
+<Sequence DisplayName="1. Initialisation" sap2010:WorkflowViewState.IdRef="Sequence_19">
+<sap2010:Annotation.AnnotationText>Load Data/Config.xlsx, Data/rules.xlsx and Data/templates.xlsx.
+Get Orchestrator assets. A missing credential is a SYSTEM exception: stop the job.</sap2010:Annotation.AnnotationText>
+<ui:Comment Text="TODO(Studio): Invoke InitAllSettings.xaml ; Get Assets HMS_BaseUrl, HMS_ApiKey, Twilio_*, SendGrid_*" sap2010:WorkflowViewState.IdRef="Comment_18" />
+</Sequence>
+<Sequence DisplayName="2. Quiet hours gate" sap2010:WorkflowViewState.IdRef="Sequence_21">
+<sap2010:Annotation.AnnotationText>Never message a patient between 21:00 and 07:00.
+Policy is DEFER, not DROP: a 2h reminder due at 06:00 is picked up by the 07:00
+run and still arrives an hour before the appointment. An appointment that has
+already started is logged SKIPPED / TOO_LATE.</sap2010:Annotation.AnnotationText>
+<ui:Comment Text="TODO(Studio): If Now outside rules reminders.quiet_hours (07:00-21:00) -&gt; log and end" sap2010:WorkflowViewState.IdRef="Comment_20" />
+</Sequence>
+<Sequence DisplayName="3. Fetch due reminders" sap2010:WorkflowViewState.IdRef="Sequence_24">
+<sap2010:Annotation.AnnotationText>Time-triggered, not queue-driven: an appointment becomes due because time passed,
+not because an event fired.
+
+The HMS applies the window tolerance (plus or minus 15 minutes around T-24h and
+T-2h), excludes cancelled appointments and anything already SENT, and skips the
+24h reminder for late bookings made inside 2 hours.
+in_NowOverride, when set, is passed as &amp;now= so tests can time-travel.</sap2010:Annotation.AnnotationText>
+<ui:Comment Text="TODO(Studio): HTTP GET /api/v1/reminders/due?window=24H -&gt; dtDue24" sap2010:WorkflowViewState.IdRef="Comment_22" />
+<ui:Comment Text="TODO(Studio): HTTP GET /api/v1/reminders/due?window=2H  -&gt; dtDue2" sap2010:WorkflowViewState.IdRef="Comment_23" />
+</Sequence>
+<ui:ForEachRow DisplayName="4. For each due appointment" DataTable="[dtDue]" sap2010:WorkflowViewState.IdRef="ForEachRow_25">
+<sap2010:Annotation.AnnotationText>Trigger setting Max concurrent jobs = 1 is load-bearing. The idempotency check
+covers re-runs, but two runs racing on the same appointment could both pass the
+check before either writes its notification row.</sap2010:Annotation.AnnotationText>
+<ui:ForEachRow.Body>
+<ActivityAction x:TypeArguments="sd:DataRow">
+<ActivityAction.Argument><DelegateInArgument x:TypeArguments="sd:DataRow" Name="row" /></ActivityAction.Argument>
+<Sequence DisplayName="Handle one appointment" sap2010:WorkflowViewState.IdRef="Sequence_16">
+<Sequence DisplayName="A. Idempotency check" sap2010:WorkflowViewState.IdRef="Sequence_2">
+<sap2010:Annotation.AnnotationText>Before anything else: has a SENT notification of this type already been logged?
+  GET /api/v1/notifications?appointment_id={id}&amp;type={REMINDER_24H|REMINDER_2H}&amp;status=SENT
+Found -&gt; log SKIPPED / DUPLICATE, increment out_Skipped, move to the next row.
+
+This check is what makes the bot safe to run twice. The trigger can double-fire,
+a run can crash half way; running five times must send exactly what one run sends.</sap2010:Annotation.AnnotationText>
+<ui:Comment Text="TODO(Studio): GET /api/v1/notifications?appointment_id=&amp;type= ; skip if status SENT" sap2010:WorkflowViewState.IdRef="Comment_1" />
+</Sequence>
+<Sequence DisplayName="B. Resolve channel" sap2010:WorkflowViewState.IdRef="Sequence_4">
+<sap2010:Annotation.AnnotationText>Workflows/ResolveChannel.xaml — PURE LOGIC, NO I/O. Unit-testable.
+
+Neither consent                         -&gt; SKIPPED / NO_CONSENT
+preferred_channel = SMS   : SMS, fall back to EMAIL
+preferred_channel = EMAIL : EMAIL, fall back to SMS
+preferred_channel = BOTH  : every available channel
+Phone must match ^\+[1-9]\d{9,14}$ ; email must be present.
+Nothing usable                          -&gt; SKIPPED / NO_CHANNEL
+
+Escalation: REMINDER_2H for URGENT or HIGH priority ignores the preference and
+sends on every consented channel. Missing an urgent appointment costs more
+than a redundant message.</sap2010:Annotation.AnnotationText>
+<ui:Comment Text="TODO(Studio): Invoke Workflows/ResolveChannel.xaml -&gt; channels list or skip reason" sap2010:WorkflowViewState.IdRef="Comment_3" />
+</Sequence>
+<Sequence DisplayName="C. Render template" sap2010:WorkflowViewState.IdRef="Sequence_6">
+<sap2010:Annotation.AnnotationText>Data/templates.xlsx keyed by template_id, e.g. TPL_REMINDER_24H_EN.
+Placeholders: {PatientName} {DoctorName} {Department} {Date} {Time} {ReferenceNo} {HospitalName}
+SMS body must stay at or under 160 characters after substitution — 161 is two
+billed Twilio segments.</sap2010:Annotation.AnnotationText>
+<ui:Comment Text="TODO(Studio): Invoke Workflows/RenderTemplate.xaml" sap2010:WorkflowViewState.IdRef="Comment_5" />
+</Sequence>
+<TryCatch DisplayName="D. Send with retry" sap2010:WorkflowViewState.IdRef="TryCatch_12">
+<sap2010:Annotation.AnnotationText>Retries happen INSIDE this run, never deferred to the next trigger — the next
+trigger may be 30 minutes away and a 2h reminder cannot wait that long.
+
+Attempt 1 at 0s, attempt 2 after 5s, attempt 3 after 15s.
+Retryable:     HTTP 429, 500, 502, 503, 504, network timeout
+Not retryable: Twilio 21211 (bad number), 21608 (unverified on trial),
+               21610 (unsubscribed), SendGrid 400, any 401
+
+Twilio 21610 is the one case this bot writes patient data:
+  PATCH /api/v1/patients/{id} {"sms_consent": false}
+
+in_DryRun = True -&gt; do not call the gateway; record provider = DRYRUN.</sap2010:Annotation.AnnotationText>
+<TryCatch.Try>
+<Sequence DisplayName="Send" sap2010:WorkflowViewState.IdRef="Sequence_8">
+<ui:Comment Text="TODO(Studio): Invoke Workflows/SendWithRetry.xaml -&gt; shared/SendSMS.xaml or shared/SendEmail.xaml" sap2010:WorkflowViewState.IdRef="Comment_7" />
+</Sequence>
+</TryCatch.Try>
+<TryCatch.Catches>
+<Catch x:TypeArguments="s:Exception" sap2010:WorkflowViewState.IdRef="Catch_13">
+<ActivityAction x:TypeArguments="s:Exception">
+<ActivityAction.Argument><DelegateInArgument x:TypeArguments="s:Exception" Name="ex" /></ActivityAction.Argument>
+<Sequence DisplayName="Send failed after retries" sap2010:WorkflowViewState.IdRef="Sequence_11">
+<sap2010:Annotation.AnnotationText>Exhausted retries: log a FAILED notification with the gateway error code, raise a
+LOW conflict so someone fixes the contact data, and CONTINUE. One patient's bad
+phone number must not stop the other reminders in this run.</sap2010:Annotation.AnnotationText>
+<ui:LogMessage DisplayName="Log send failure" Level="Warn" Message='["Reminder failed: " &amp; ex.Message]' sap2010:WorkflowViewState.IdRef="LogMessage_9" />
+<ui:Comment Text="TODO(Studio): POST /api/v1/notifications status FAILED ; POST /api/v1/conflicts severity LOW ; continue to next row" sap2010:WorkflowViewState.IdRef="Comment_10" />
+</Sequence>
+</ActivityAction>
+</Catch>
+</TryCatch.Catches>
+</TryCatch>
+<Sequence DisplayName="E. Log outcome" sap2010:WorkflowViewState.IdRef="Sequence_15">
+<ui:Comment Text="TODO(Studio): POST /api/v1/notifications with status, provider, provider_message_id, attempt_no" sap2010:WorkflowViewState.IdRef="Comment_14" />
+</Sequence>
+</Sequence>
+</ActivityAction>
+</ui:ForEachRow.Body>
+</ui:ForEachRow>
+<Sequence DisplayName="5. Run summary" sap2010:WorkflowViewState.IdRef="Sequence_27">
+<sap2010:Annotation.AnnotationText>The summary line is where the Phase 4 report gets its reminder-coverage number.</sap2010:Annotation.AnnotationText>
+<ui:Comment Text="TODO(Studio): Log one JSON line: run_at, window_24h_found, window_2h_found, sent_sms, sent_email, skipped by reason, failed, duration_seconds" sap2010:WorkflowViewState.IdRef="Comment_26" />
+</Sequence>
+</Sequence>
+</Activity>
