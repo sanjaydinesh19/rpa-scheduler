@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Doctor schedule · {{ hospital_name }}{% endblock %}
+{% block body %}
+
+<h1>Doctor schedule</h1>
+<p class="sub">The Scheduling Bot's data-scrape target. Fixed column order and one plain
+<code>&lt;table&gt;</code>, so UiPath Table Extraction returns a clean DataTable in one pass.</p>
+
+<div class="panel">
+  <form method="get">
+    <div class="grid g4">
+      <div class="field">
+        <label for="department">Department</label>
+        <select id="department" name="department" data-automation-id="sch-department">
+          <option value="">Any</option>
+          {% for d in departments %}
+          <option value="{{ d.code }}" {% if f.department == d.code %}selected{% endif %}>{{ d.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="doctor_id">Doctor</label>
+        <select id="doctor_id" name="doctor_id" data-automation-id="sch-doctor">
+          <option value="">Any</option>
+          {% for doc in doctors %}
+          <option value="{{ doc.doctor_id }}"
+            {% if f.doctor_id and f.doctor_id|string == doc.doctor_id|string %}selected{% endif %}>
+            {{ doc.full_name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="date_from">From</label>
+        <input type="date" id="date_from" name="date_from" data-automation-id="sch-date-from"
+               value="{{ f.date_from }}">
+      </div>
+      <div class="field">
+        <label for="date_to">To</label>
+        <input type="date" id="date_to" name="date_to" data-automation-id="sch-date-to"
+               value="{{ f.date_to }}">
+      </div>
+      <div class="field">
+        <label for="status">Status</label>
+        <select id="status" name="status" data-automation-id="sch-status">
+          {% for s in ['AVAILABLE','BOOKED','BLOCKED','LOCKED',''] %}
+          <option value="{{ s }}" {% if f.status == s %}selected{% endif %}>{{ s or 'All' }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <button type="submit" data-automation-id="sch-load-btn">Load schedule</button>
+  </form>
+</div>
+
+{% if loaded %}
+<div class="panel">
+  <h2>{{ slots|length }} slot{{ '' if slots|length == 1 else 's' }}</h2>
+  {% if slots %}
+  <div class="scroll">
+  <table data-automation-id="sch-slot-table">
+    <thead><tr>
+      <th>SlotId</th><th>DoctorId</th><th>DoctorName</th><th>Department</th>
+      <th>Date</th><th>StartTime</th><th>EndTime</th><th>Status</th>
+      <th>IsEmergencyReserve</th><th>Version</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for s in slots %}
+      <tr data-automation-id="sch-slot-row">
+        <td>{{ s.slot_id }}</td>
+        <td>{{ s.doctor_id }}</td>
+        <td>{{ s.doctor.full_name }}</td>
+        <td>{{ s.doctor.department.code }}</td>
+        <td>{{ s.slot_date.isoformat() }}</td>
+        <td>{{ s.start_time.strftime('%H:%M') }}</td>
+        <td>{{ s.end_time.strftime('%H:%M') }}</td>
+        <td>
+          {% if s.status == 'AVAILABLE' %}<span class="tag t-ok">{{ s.status }}</span>
+          {% elif s.status == 'BOOKED' %}<span class="tag t-info">{{ s.status }}</span>
+          {% elif s.status == 'BLOCKED' %}<span class="tag t-bad">{{ s.status }}</span>
+          {% else %}<span class="tag t-warn">{{ s.status }}</span>{% endif %}
+        </td>
+        <td>{{ 'TRUE' if s.is_emergency_reserve else 'FALSE' }}</td>
+        <td>{{ s.version }}</td>
+        <td>
+          {% if s.status == 'AVAILABLE' %}
+          <a class="btn sm" href="{{ url_for('ui.book', slot_id=s.slot_id) }}">Book</a>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+    <p class="empty" data-automation-id="sch-no-slots">
+      No slots match those filters. The bot treats this as <code>NO_SLOT_AVAILABLE</code>
+      and pushes the request to the exception queue.
+    </p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}
