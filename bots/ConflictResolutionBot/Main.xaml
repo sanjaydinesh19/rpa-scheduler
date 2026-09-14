@@ -1,0 +1,169 @@
+<Activity mc:Ignorable="sap sap2010" x:Class="Main"
+ xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+ xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+ xmlns:s="clr-namespace:System;assembly=System.Private.CoreLib"
+ xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
+ xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
+ xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib"
+ xmlns:sd="clr-namespace:System.Data;assembly=System.Data.Common"
+ xmlns:ui="http://schemas.uipath.com/workflow/activities"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <x:Members>
+    <x:Property Name="in_Mode" Type="InArgument(x:String)" />
+    <x:Property Name="in_QueueName" Type="InArgument(x:String)" />
+    <x:Property Name="out_Resolved" Type="OutArgument(x:Int32)" />
+    <x:Property Name="out_Escalated" Type="OutArgument(x:Int32)" />
+  </x:Members>
+  <sap2010:ExpressionActivityEditor.ExpressionActivityEditor>VisualBasic</sap2010:ExpressionActivityEditor.ExpressionActivityEditor>
+  <TextExpression.NamespacesForImplementation>
+    <scg:List x:TypeArguments="x:String" Capacity="8">
+      <x:String>System</x:String>
+      <x:String>System.Collections.Generic</x:String>
+      <x:String>System.Data</x:String>
+      <x:String>System.Linq</x:String>
+      <x:String>UiPath.Core</x:String>
+      <x:String>UiPath.Core.Activities</x:String>
+    </scg:List>
+  </TextExpression.NamespacesForImplementation>
+  <TextExpression.ReferencesForImplementation>
+    <scg:List x:TypeArguments="AssemblyReference" Capacity="8">
+      <AssemblyReference>System.Data.Common</AssemblyReference>
+      <AssemblyReference>System.Linq</AssemblyReference>
+      <AssemblyReference>UiPath.System.Activities</AssemblyReference>
+      <AssemblyReference>UiPath.UIAutomation.Activities</AssemblyReference>
+      <AssemblyReference>UiPath.WebAPI.Activities</AssemblyReference>
+      <AssemblyReference>UiPath.Excel.Activities</AssemblyReference>
+    </scg:List>
+  </TextExpression.ReferencesForImplementation>
+<Sequence DisplayName="Conflict Resolution Bot - Main" sap2010:WorkflowViewState.IdRef="Sequence_42">
+<sap2010:Annotation.AnnotationText>CONFLICT RESOLUTION BOT — implements docs/phase2/bot_conflict.md.
+
+Safety rails (non-negotiable, mirrored in rules.yaml safety and enforced again
+by the HMS): no move inside 4h, no automatic move of URGENT, max 2 automatic
+moves per appointment, never move a patient later during backfill, never delete
+records, always notify, always audit, block slots before a cascade.</sap2010:Annotation.AnnotationText>
+<Sequence.Variables>
+<Variable x:TypeArguments="ui:QueueItem" Name="TransactionItem" />
+<Variable x:TypeArguments="scg:Dictionary(x:String, x:Object)" Name="Config" />
+<Variable x:TypeArguments="sd:DataTable" Name="dtRules" />
+</Sequence.Variables>
+<ui:LogMessage DisplayName="Log - Start" Level="Info" Message='["ConflictResolutionBot starting in mode " &amp; in_Mode]' sap2010:WorkflowViewState.IdRef="LogMessage_35" />
+<Sequence DisplayName="1. Initialisation" sap2010:WorkflowViewState.IdRef="Sequence_37">
+<ui:Comment Text="TODO(Studio): Invoke InitAllSettings.xaml and InitAllApplications.xaml" sap2010:WorkflowViewState.IdRef="Comment_36" />
+</Sequence>
+<Sequence DisplayName="2. Mode switch" sap2010:WorkflowViewState.IdRef="Sequence_39">
+<sap2010:Annotation.AnnotationText>One project, two entry modes:
+  SWEEP  started by the 15-minute time trigger (staggered :07 :22 :37 :52)
+  QUEUE  started by a queue trigger on Conflicts
+Community Edition gives one unattended robot, so the stagger keeps this job from
+colliding with the Reminder Bot's :00 and :30 runs.</sap2010:Annotation.AnnotationText>
+<ui:Comment Text='TODO(Studio): If in_Mode = "SWEEP" run the sweep sequence, else run the queue sequence' sap2010:WorkflowViewState.IdRef="Comment_38" />
+<Sequence DisplayName="SWEEP mode - detect and enqueue" sap2010:WorkflowViewState.IdRef="Sequence_5">
+<sap2010:Annotation.AnnotationText>Runs on the 15-minute trigger. It DETECTS AND ENQUEUES; it never resolves.
+
+Some conflicts announce themselves (a doctor marked unavailable). Others are
+silent — a time overlap from regenerated slots, a row missing from Excel. The
+sweep finds the silent ones and pushes them into the same Conflicts queue, so
+every conflict goes through one resolution path and one audit trail.
+
+Double-bookings come in two kinds, both returned by the detect endpoint:
+  SAME_SLOT     two appointments on one slot row — impossible through the normal
+                path because of the partial unique index; checked anyway
+  TIME_OVERLAP  same doctor, overlapping times, different slot rows — the kind
+                that actually happens and no index can prevent</sap2010:Annotation.AnnotationText>
+<ui:Comment Text="TODO(Studio): GET /api/v1/conflicts/detect/double-bookings?raise=true" sap2010:WorkflowViewState.IdRef="Comment_1" />
+<ui:Comment Text="TODO(Studio): GET /api/v1/doctors/unavailability?is_processed=false" sap2010:WorkflowViewState.IdRef="Comment_2" />
+<ui:Comment Text="TODO(Studio): Reconcile appointments.xlsx against GET /api/v1/appointments (see tools/excel_mirror.py for the reference logic)" sap2010:WorkflowViewState.IdRef="Comment_3" />
+<ui:Comment Text="TODO(Studio): Add Queue Item to in_QueueName for every finding" sap2010:WorkflowViewState.IdRef="Comment_4" />
+</Sequence>
+<Sequence DisplayName="QUEUE mode - resolve" sap2010:WorkflowViewState.IdRef="Sequence_34">
+<ui:Comment Text="TODO(Studio): Get Transaction Item from in_QueueName ; loop until Nothing" sap2010:WorkflowViewState.IdRef="Comment_26" />
+<TryCatch DisplayName="Process conflict" sap2010:WorkflowViewState.IdRef="TryCatch_31">
+<TryCatch.Try>
+<Sequence DisplayName="Route by conflict type" sap2010:WorkflowViewState.IdRef="Sequence_25">
+<ui:Comment Text='TODO(Studio): Switch on SpecificContent("ConflictType") -&gt; Strategy A / B / C / D' sap2010:WorkflowViewState.IdRef="Comment_21" />
+<Sequence DisplayName="Strategy A - DOUBLE_BOOKING" sap2010:WorkflowViewState.IdRef="Sequence_8">
+<sap2010:Annotation.AnnotationText>Who keeps the time is rule-based, never arbitrary:
+  priority (URGENT, HIGH, NORMAL) -&gt; follow-up first -&gt; earliest created -&gt; lowest id
+
+For each loser, ESCALATE instead of moving when:
+  inside min_reschedule_notice_hours (4h)       TOO_CLOSE_TO_RESCHEDULE
+  follow-up with a previous appointment         TREATMENT_CYCLE_NEEDS_APPROVAL
+  priority URGENT                               URGENT_NEVER_AUTO_MOVED
+  already moved max_reschedules_per_appointment AMBIGUOUS_PRIORITY
+  no viable slot within reschedule_window_days  NO_REPLACEMENT_SLOT
+
+FindReplacementSlot reuses SchedulingBot's AllocateSlot.xaml, so a moved
+patient is treated by exactly the same fairness rules as a new one.
+The HMS enforces these rails too and returns the same codes from
+/admin/reschedule — the bot checks first so it can escalate with a SuggestedSlot.</sap2010:Annotation.AnnotationText>
+<ui:Comment Text="TODO(Studio): Keeper = first by priority rank, is_follow_up, created_at, appointment_id" sap2010:WorkflowViewState.IdRef="Comment_6" />
+<ui:Comment Text="TODO(Studio): For each loser: check rails, FindReplacementSlot, reschedule via /admin/reschedule UI, notify" sap2010:WorkflowViewState.IdRef="Comment_7" />
+</Sequence>
+<Sequence DisplayName="Strategy B - DOCTOR_UNAVAILABLE" sap2010:WorkflowViewState.IdRef="Sequence_13">
+<sap2010:Annotation.AnnotationText>Block the slots BEFORE rescheduling anyone. A half day of leave is 12 to 16
+patients and takes minutes to work through; without blocking first the
+Scheduling Bot can book a new patient into the very gap this bot is emptying.
+
+Work in priority order so the urgent patient gets the good replacement slot.</sap2010:Annotation.AnnotationText>
+<ui:Comment Text="TODO(Studio): POST /api/v1/slots/block for the unavailability range  (BLOCK FIRST)" sap2010:WorkflowViewState.IdRef="Comment_9" />
+<ui:Comment Text="TODO(Studio): Affected appointments ordered by priority rank, then appointment time" sap2010:WorkflowViewState.IdRef="Comment_10" />
+<ui:Comment Text="TODO(Studio): Pass 1 other doctor same day same band; Pass 2 same doctor after leave; Pass 3 any doctor in window" sap2010:WorkflowViewState.IdRef="Comment_11" />
+<ui:Comment Text="TODO(Studio): PATCH /api/v1/doctors/unavailability/{id} is_processed=true" sap2010:WorkflowViewState.IdRef="Comment_12" />
+</Sequence>
+<Sequence DisplayName="Strategy C - CANCELLATION_CASCADE" sap2010:WorkflowViewState.IdRef="Sequence_17">
+<sap2010:Annotation.AnnotationText>A cancellation is an opportunity the manual process wastes.
+
+Backfill only ever moves a patient EARLIER. Moving someone later to fill a gap
+optimises the calendar at the patient's expense. Switched off entirely by
+conflicts.backfill.enable_waitlist_backfill = false.</sap2010:Annotation.AnnotationText>
+<ui:Comment Text="TODO(Studio): Confirm slot freed, update Excel row to CANCELLED, notify the cancelling patient" sap2010:WorkflowViewState.IdRef="Comment_14" />
+<ui:Comment Text="TODO(Studio): If rules backfill enabled: find URGENT/HIGH patient booked LATER in same department within 14 days" sap2010:WorkflowViewState.IdRef="Comment_15" />
+<ui:Comment Text="TODO(Studio): Move them EARLIER into the freed slot, notify, audit" sap2010:WorkflowViewState.IdRef="Comment_16" />
+</Sequence>
+<Sequence DisplayName="Strategy D - EXCEL_MISMATCH" sap2010:WorkflowViewState.IdRef="Sequence_20">
+<sap2010:Annotation.AnnotationText>The HMS is the system of record. Excel is corrected; the HMS is never edited
+from Excel. An orphan row in Excel may be the only trace of a booking the HMS
+lost, so it is escalated and never auto-deleted.</sap2010:Annotation.AnnotationText>
+<ui:Comment Text="TODO(Studio): MISSING_IN_EXCEL / STATUS_DRIFT / DATETIME_DRIFT -&gt; overwrite Excel from HMS" sap2010:WorkflowViewState.IdRef="Comment_18" />
+<ui:Comment Text="TODO(Studio): ORPHAN_IN_EXCEL -&gt; escalate, never delete" sap2010:WorkflowViewState.IdRef="Comment_19" />
+</Sequence>
+<Sequence DisplayName="Close out" sap2010:WorkflowViewState.IdRef="Sequence_24">
+<sap2010:Annotation.AnnotationText>Escalation is a correct outcome, not a failure — the transaction is still set
+Successful. SuggestedSlot is included even when the bot declined to act, so the
+clerk gets a one-click decision instead of a research task.
+
+Every reschedule notifies the patient BEFORE the transaction closes, and writes
+an audit row. A silent move is worse than no move.</sap2010:Annotation.AnnotationText>
+<ui:Comment Text="TODO(Studio): PATCH /api/v1/conflicts/{id} status RESOLVED or ESCALATED with resolution_note" sap2010:WorkflowViewState.IdRef="Comment_22" />
+<ui:Comment Text="TODO(Studio): Escalations: Add Queue Item to Conflicts_Exceptions with ConflictId, Reason, AppointmentRef, PatientName, PatientPhone, CurrentSlot, SuggestedSlot, WhyEscalated" sap2010:WorkflowViewState.IdRef="Comment_23" />
+</Sequence>
+</Sequence>
+</TryCatch.Try>
+<TryCatch.Catches>
+<Catch x:TypeArguments="ui:BusinessRuleException" sap2010:WorkflowViewState.IdRef="Catch_32">
+<ActivityAction x:TypeArguments="ui:BusinessRuleException">
+<ActivityAction.Argument><DelegateInArgument x:TypeArguments="ui:BusinessRuleException" Name="bex" /></ActivityAction.Argument>
+<Sequence DisplayName="Business exception" sap2010:WorkflowViewState.IdRef="Sequence_28">
+<ui:LogMessage DisplayName="Log escalation" Level="Warn" Message='["Conflict escalated: " &amp; bex.Message]' sap2010:WorkflowViewState.IdRef="LogMessage_27" />
+</Sequence>
+</ActivityAction>
+</Catch>
+<Catch x:TypeArguments="s:Exception" sap2010:WorkflowViewState.IdRef="Catch_33">
+<ActivityAction x:TypeArguments="s:Exception">
+<ActivityAction.Argument><DelegateInArgument x:TypeArguments="s:Exception" Name="ex" /></ActivityAction.Argument>
+<Sequence DisplayName="System exception" sap2010:WorkflowViewState.IdRef="Sequence_30">
+<sap2010:Annotation.AnnotationText>Environment failure — set Failed with ErrorType Application so Orchestrator retries.</sap2010:Annotation.AnnotationText>
+<ui:LogMessage DisplayName="Log system error" Level="Error" Message='["Conflict processing error: " &amp; ex.Message]' sap2010:WorkflowViewState.IdRef="LogMessage_29" />
+</Sequence>
+</ActivityAction>
+</Catch>
+</TryCatch.Catches>
+</TryCatch>
+</Sequence>
+</Sequence>
+<Sequence DisplayName="3. Close applications" sap2010:WorkflowViewState.IdRef="Sequence_41">
+<ui:LogMessage DisplayName="Log - Finished" Level="Info" Message='["ConflictResolutionBot finished"]' sap2010:WorkflowViewState.IdRef="LogMessage_40" />
+</Sequence>
+</Sequence>
+</Activity>
