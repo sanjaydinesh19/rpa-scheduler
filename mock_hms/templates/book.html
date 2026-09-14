@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Booking form · {{ hospital_name }}{% endblock %}
+{% block body %}
+
+<h1>Booking form</h1>
+<p class="sub">The screen the Scheduling Bot fills in. Every guard from
+<code>bot_scheduling.md</code> runs here — slot status, version, emergency reserve,
+daily caps, and the database's partial unique index behind them all.</p>
+
+{% if result %}
+<div class="note n-ok" data-automation-id="book-success">
+  <strong>Booked — reference
+  <span data-automation-id="book-reference-no">{{ result.reference_no }}</span></strong>
+  <ul>
+    <li>Appointment id <code data-automation-id="book-appointment-id">{{ result.appointment_id }}</code></li>
+    <li>{{ result.doctor.full_name }} · {{ result.department.name }}</li>
+    <li>{{ result.appointment_datetime.strftime('%Y-%m-%d %H:%M') }}</li>
+    <li>Priority <code>{{ result.priority }}</code> · slot <code>{{ result.slot_id }}</code></li>
+  </ul>
+</div>
+{% endif %}
+
+{% if error_code %}
+<div class="note n-bad" data-automation-id="book-error">
+  <strong>Booking failed:
+  <span data-automation-id="book-error-code">{{ error_code }}</span></strong>
+  <div>{{ error_message }}</div>
+  {% if error_code in ['SLOT_TAKEN','SLOT_LOCKED'] %}
+  <div style="margin-top:6px"><small>Retryable — the bot re-runs allocation and takes
+  the next-best slot, up to 3 attempts.</small></div>
+  {% endif %}
+</div>
+{% endif %}
+
+<form method="post" class="panel">
+  <div class="grid g2">
+    <div class="field">
+      <label for="patient_id">Patient ID</label>
+      <input type="text" id="patient_id" name="patient_id"
+             data-automation-id="book-patient-id" value="{{ form.patient_id }}" required>
+    </div>
+    <div class="field">
+      <label for="slot_id">Slot ID</label>
+      <input type="text" id="slot_id" name="slot_id"
+             data-automation-id="book-slot-id" value="{{ form.slot_id }}" required>
+    </div>
+    <div class="field">
+      <label for="priority">Priority</label>
+      <select id="priority" name="priority" data-automation-id="book-priority">
+        {% for p in ['NORMAL','HIGH','URGENT'] %}
+        <option value="{{ p }}" {% if form.priority == p %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="queue_item_ref">Queue item reference</label>
+      <input type="text" id="queue_item_ref" name="queue_item_ref"
+             data-automation-id="book-queue-ref" value="{{ form.queue_item_ref }}"
+             placeholder="REQ-000412">
+    </div>
+  </div>
+
+  <div class="field">
+    <label for="reason">Reason for visit</label>
+    <textarea id="reason" name="reason" data-automation-id="book-reason">{{ form.reason }}</textarea>
+  </div>
+
+  <div class="field check">
+    <input type="checkbox" id="is_follow_up" name="is_follow_up"
+           data-automation-id="book-is-followup" {% if form.is_follow_up %}checked{% endif %}>
+    <label for="is_follow_up">Follow-up visit</label>
+  </div>
+
+  <input type="hidden" name="booked_by" value="SchedulingBot">
+  <button type="submit" data-automation-id="book-submit">Confirm booking</button>
+</form>
+
+<div class="note n-info">
+  <strong>Error codes this form returns</strong> in
+  <code>book-error-code</code>: <code>SLOT_TAKEN</code>, <code>SLOT_LOCKED</code>,
+  <code>SLOT_BLOCKED</code>, <code>PATIENT_NOT_FOUND</code>,
+  <code>DOCTOR_INACTIVE</code>, <code>DAILY_CAP_REACHED</code>,
+  <code>VALIDATION_ERROR</code>. Only the first two are retryable.
+</div>
+
+{% endblock %}
