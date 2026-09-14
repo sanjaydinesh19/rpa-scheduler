@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Conflicts · {{ hospital_name }}{% endblock %}
+{% block body %}
+
+<h1>Conflict console</h1>
+<p class="sub">Double-bookings, doctor unavailability, cancellation cascades and
+HMS&#8596;Excel drift. The Conflict Resolution Bot scrapes this table; a clerk works
+whatever the bot escalated.</p>
+
+{% if message %}<div class="note n-ok">{{ message }}</div>{% endif %}
+
+<div class="panel">
+  <form method="get" style="display:flex;gap:10px;align-items:flex-end">
+    <div class="field" style="margin:0;min-width:200px">
+      <label for="status">Status</label>
+      <select id="status" name="status" data-automation-id="cfl-status-filter">
+        {% for s in ['OPEN','RESOLVED','ESCALATED',''] %}
+        <option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s or 'All' }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" data-automation-id="cfl-load-btn">Filter</button>
+  </form>
+</div>
+
+<div class="panel">
+  <h2>{{ conflicts|length }} conflict{{ '' if conflicts|length == 1 else 's' }}</h2>
+  {% if conflicts %}
+  <div class="scroll">
+  <table data-automation-id="cfl-table">
+    <thead><tr>
+      <th>ConflictId</th><th>Type</th><th>Severity</th><th>AppointmentId</th>
+      <th>RelatedAppointmentId</th><th>SlotId</th><th>DetectedBy</th>
+      <th>Status</th><th>Detail</th><th>Resolve</th>
+    </tr></thead>
+    <tbody>
+    {% for c in conflicts %}
+      <tr data-automation-id="cfl-row">
+        <td>{{ c.conflict_id }}</td>
+        <td>{{ c.conflict_type }}</td>
+        <td>
+          {% if c.severity == 'HIGH' %}<span class="tag t-bad">HIGH</span>
+          {% elif c.severity == 'MEDIUM' %}<span class="tag t-warn">MEDIUM</span>
+          {% else %}<span class="tag t-mute">LOW</span>{% endif %}
+        </td>
+        <td>{{ c.appointment_id or '' }}</td>
+        <td>{{ c.related_appointment_id or '' }}</td>
+        <td>{{ c.slot_id or '' }}</td>
+        <td>{{ c.detected_by }}</td>
+        <td>
+          {% if c.status == 'OPEN' %}<span class="tag t-warn">OPEN</span>
+          {% elif c.status == 'RESOLVED' %}<span class="tag t-ok">RESOLVED</span>
+          {% else %}<span class="tag t-bad">ESCALATED</span>{% endif %}
+        </td>
+        <td style="max-width:280px">{{ c.detail or '—' }}
+          {% if c.resolution_note %}<br><small>{{ c.resolution_note }}</small>{% endif %}
+        </td>
+        <td>
+          {% if c.status == 'OPEN' %}
+          <form method="post" style="display:flex;gap:4px;flex-wrap:wrap">
+            <input type="hidden" name="conflict_id" value="{{ c.conflict_id }}">
+            <select name="resolution" data-automation-id="cfl-resolution" style="width:auto">
+              <option value="REBOOKED">REBOOKED</option>
+              <option value="CANCELLED">CANCELLED</option>
+              <option value="ESCALATED">ESCALATED</option>
+              <option value="NO_ACTION">NO_ACTION</option>
+            </select>
+            <input type="text" name="note" placeholder="note"
+                   data-automation-id="cfl-note" style="width:130px">
+            <button type="submit" class="sm" data-automation-id="cfl-save">Save</button>
+          </form>
+          {% else %}
+            <span class="tag t-mute">{{ c.resolution or '—' }}</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+    <p class="empty" data-automation-id="cfl-no-rows">No conflicts with status "{{ status or 'any' }}".</p>
+  {% endif %}
+</div>
+
+<div class="note n-info">
+  <strong>Escalation is the right answer, not a failure.</strong> The bot hands a
+  conflict back when rescheduling would land inside the
+  {{ rules.min_reschedule_notice_hours }}-hour notice period, when the appointment is a
+  follow-up in an active treatment cycle, when the patient has already been moved
+  {{ rules.max_reschedules_per_appointment }} times, or when no viable replacement slot
+  exists. Each of those is a judgement a clerk should make.
+</div>
+
+{% endblock %}
