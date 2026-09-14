@@ -1,0 +1,36 @@
+task_id,task,actor_today,frequency,avg_manual_time_min,automation_fit,assigned_bot,rationale
+T01,Receive and record booking request,Front-desk clerk,~120/day,2,high,None (Mock HMS form),Structured web form replaces verbal intake; validation at source
+T02,Validate patient contact details,Front-desk clerk,~120/day,1,high,None (Mock HMS form),Deterministic format rules; no judgement needed
+T03,Push validated request to work queue,Front-desk clerk,~120/day,1,high,None (Mock HMS form),HMS posts directly to Orchestrator queue
+T04,Pick next request to work on,Front-desk clerk,~120/day,0.5,high,SchedulingBot,Orchestrator queue guarantees once-only ordered pickup
+T05,Search patient by phone number,Front-desk clerk,~120/day,1.5,high,SchedulingBot,Exact-match UI search is fully scriptable
+T06,Register new patient record,Front-desk clerk,~35/day,3,high,SchedulingBot,Fixed-field HMS form; data already validated upstream
+T07,Detect duplicate patient records,Front-desk clerk,~15/day,4,med,SchedulingBot,Phone match is reliable; fuzzy name matches still need a human
+T08,Scrape doctor schedule for free slots,Front-desk clerk,~120/day,4,high,SchedulingBot,Highest-value target; pure screen reading replaced by data scraping
+T09,Match slot to patient preference window,Front-desk clerk,~120/day,2,high,SchedulingBot,Rule-driven comparison once slots are structured data
+T10,Apply priority rules (urgent/senior/follow-up),Coordinator,~25/day,5,high,SchedulingBot,Rules externalised to rules.yaml; removes the coordinator phone call
+T11,Approve exceptional over-allocation,Coordinator,~5/day,6,low,None (human),Clinical and capacity judgement; deliberately kept human
+T12,Re-check slot still free before submit,Front-desk clerk,rarely done,0,high,SchedulingBot,Optimistic lock; the manual process skips this entirely
+T13,Enter booking in HMS form,Front-desk clerk,~120/day,2,high,SchedulingBot,Deterministic form fill with known field mapping
+T14,Capture appointment reference number,Front-desk clerk,~120/day,0.5,high,SchedulingBot,Screen scrape of the confirmation panel
+T15,Re-enter appointment into Excel workbook,Billing clerk,~120/day,2,high,SchedulingBot,Pure duplicate entry; becomes part of the same transaction
+T16,Reconcile HMS against Excel workbook,Billing clerk,monthly,480,high,ConflictResolutionBot,Row-by-row comparison is ideal for a scheduled sweep
+T17,Confirm appointment details to patient,Front-desk clerk,~120/day,2,high,SchedulingBot,Templated SMS/email via Twilio and SendGrid
+T18,Close out and log the transaction,Front-desk clerk,not done today,0,high,SchedulingBot,Orchestrator status plus output data gives a full audit trail
+T19,Build tomorrow's reminder call list,Front-desk clerk,daily,15,high,ReminderBot,Query by appointment datetime window
+T20,Call patients to remind (T-24h),Front-desk clerk,~120/day,1.5,high,ReminderBot,Replaced by templated SMS/email at scale
+T21,Same-day reminder (T-2h),Front-desk clerk,not done today,0,high,ReminderBot,New capability; trigger-driven second touchpoint
+T22,Choose SMS vs email per patient,Front-desk clerk,n/a,0,high,ReminderBot,Decision tree on consent flags and contact availability
+T23,Retry failed reminder attempts,Front-desk clerk,rarely done,0,high,ReminderBot,Bounded retry with backoff on transient gateway errors
+T24,Log reminder outcome per patient,Front-desk clerk,not done today,0,high,ReminderBot,Writes to Notification table for coverage reporting
+T25,Detect double-booked slots,Coordinator,~10/week,20,high,ConflictResolutionBot,Deterministic query over slot and appointment tables
+T26,Resolve a double-booking,Front-desk clerk,~10/week,15,med,ConflictResolutionBot,Automatable by priority rules; ties escalate to a human
+T27,Detect doctor unavailability / leave,Coordinator,~6/week,10,high,ConflictResolutionBot,HMS unavailability flag raises a conflict queue item
+T28,Cascade-reschedule a leave day's patients,Front-desk clerk,~6/week,90,med,ConflictResolutionBot,High volume and rule-driven; mid-treatment cases need approval
+T29,Handle patient-initiated cancellation,Front-desk clerk,~20/week,4,high,ConflictResolutionBot,Free the slot and offer it to the waitlist automatically
+T30,Offer freed slot to waitlisted patient,Front-desk clerk,rarely done,0,med,ConflictResolutionBot,New capability; depends on waitlist data quality
+T31,Notify patients of a schedule change,Front-desk clerk,~30/week,3,high,ConflictResolutionBot,Templated notification reusing the shared send workflows
+T32,Decide if a reschedule is clinically safe,Coordinator,~8/week,10,low,None (human),Requires treatment-cycle context the system does not hold
+T33,Work the exception queue,Front-desk clerk,~15/day,5,low,None (human),Deliberate human-in-the-loop boundary of the automation
+T34,Maintain business rules and rosters,Coordinator,weekly,45,low,None (human),Policy ownership stays with the department
+T35,Produce daily appointment report,Billing clerk,daily,20,med,ConflictResolutionBot,Derivable from the reconciled data as a by-product of the sweep
