@@ -1,0 +1,53 @@
+{
+  "name": "SchedulingBot",
+  "projectId": "8f2a7c14-5d63-4b90-9e21-3a6c8d0f1b47",
+  "description": "Consumes BookingRequests queue items, allocates the best slot per rules.yaml, books through the Mock HMS UI, mirrors to Excel and sends a confirmation.",
+  "main": "Main.xaml",
+  "dependencies": {
+    "UiPath.Excel.Activities": "[2.23.4]",
+    "UiPath.Mail.Activities": "[1.23.4]",
+    "UiPath.System.Activities": "[23.10.3]",
+    "UiPath.UIAutomation.Activities": "[23.10.5]",
+    "UiPath.WebAPI.Activities": "[1.17.0]"
+  },
+  "webServices": [],
+  "entitiesStores": [],
+  "schemaVersion": "4.0",
+  "studioVersion": "23.10.0.0",
+  "projectVersion": "1.0.0",
+  "runtimeOptions": {
+    "autoDispose": false,
+    "netFrameworkLazyLoading": false,
+    "isPausable": true,
+    "isAttended": false,
+    "requiresUserInteraction": false,
+    "supportsPersistence": false,
+    "workflowSerialization": "DataContract",
+    "excludedLoggedData": [
+      "Private:*",
+      "*password*",
+      "*token*",
+      "*apikey*"
+    ],
+    "executionType": "Workflow",
+    "readyForPiP": false,
+    "startsInPiP": false,
+    "mustRestoreAllDependencies": true,
+    "pipType": "ChildSession"
+  },
+  "designOptions": {
+    "projectProfile": "Development",
+    "outputType": "Process",
+    "libraryOptions": {
+      "includeOriginalXaml": false,
+      "privateWorkflows": []
+    },
+    "processOptions": {
+      "ignoredFiles": []
+    },
+    "fileInfoCollection": [],
+    "saveToCloud": false
+  },
+  "expressionLanguage": "VisualBasic",
+  "targetFramework": "Windows"
+}
