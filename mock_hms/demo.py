@@ -42,80 +42,28 @@ def reseed():
 @demo.post("/plant-double-booking")
 @require_api_key
 def plant_double_booking():
-    """Force two active appointments onto one slot.
+    """Create a real, reachable double-booking on demand.
 
-    Deliberately bypasses `book_appointment` and writes straight to the table,
-    because the whole point of the guards there is that this cannot happen
-    through the normal path. The partial unique index still blocks a true
-    duplicate, so the plant instead moves a second appointment onto a booked
-    slot with the index temporarily bypassed via a direct UPDATE.
+    Delegates to the same function the seed uses. It deliberately does *not*
+    try to put two appointments on one slot: the partial unique index refuses
+    that even from raw SQL, which is the guard working. What it plants instead
+    is an overlapping slot on the same doctor's calendar — two individually
+    legal rows, one doctor, one moment in time — which is the double-booking
+    shape no index can prevent and the Conflict Bot actually has to resolve.
     """
     blocked = _guard()
     if blocked:
         return blocked
 
-    booked = (
-        Appointment.query.filter(
-            Appointment.status.in_(Appointment.ACTIVE_STATUSES),
-            Appointment.appointment_datetime > utcnow() + timedelta(hours=24),
+    from .seed import plant_double_booking as plant
+
+    result = plant()
+    if result is None:
+        return err(
+            "VALIDATION_ERROR",
+            "Could not plant a conflict — need a future appointment and a free overlapping time",
         )
-        .order_by(Appointment.appointment_datetime)
-        .first()
-    )
-    if booked is None:
-        return err("VALIDATION_ERROR", "No future appointment to collide with")
-
-    victim = (
-        Appointment.query.filter(
-            Appointment.appointment_id != booked.appointment_id,
-            Appointment.status.in_(Appointment.ACTIVE_STATUSES),
-            Appointment.slot_id != booked.slot_id,
-        )
-        .order_by(Appointment.appointment_id.desc())
-        .first()
-    )
-    if victim is None:
-        return err("VALIDATION_ERROR", "Need at least two active appointments")
-
-    old_slot_id = victim.slot_id
-    # Raw UPDATE: SQLAlchemy would honour the partial unique index on flush,
-    # which is exactly the guard we are simulating a failure of.
-    db.session.execute(
-        db.text(
-            "UPDATE appointment SET slot_id=:s, doctor_id=:d, department_id=:dep, "
-            "appointment_datetime=:dt WHERE appointment_id=:a"
-        ),
-        {
-            "s": booked.slot_id,
-            "d": booked.doctor_id,
-            "dep": booked.department_id,
-            "dt": booked.appointment_datetime,
-            "a": victim.appointment_id,
-        },
-    )
-    old = db.session.get(Slot, old_slot_id)
-    if old:
-        old.status = "AVAILABLE"
-        old.version += 1
-    db.session.commit()
-
-    c = svc.raise_conflict(
-        "DOUBLE_BOOKING",
-        severity="HIGH",
-        appointment_id=booked.appointment_id,
-        related_appointment_id=victim.appointment_id,
-        slot_id=booked.slot_id,
-        detected_by="HMS",
-        detail=f"Planted for demo: {booked.reference_no} and {victim.reference_no} share slot {booked.slot_id}",
-    )
-    return jsonify(
-        {
-            "planted": True,
-            "slot_id": booked.slot_id,
-            "appointments": [booked.reference_no, victim.reference_no],
-            "conflict_id": c.conflict_id,
-        }
-    )
+    return jsonify({"planted": True, **result})
 
 
 @demo.post("/plant-unavailability")
