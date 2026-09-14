@@ -170,9 +170,10 @@ def schedule():
     dept = request.args.get("department", "")
     doctor_id = request.args.get("doctor_id", type=int)
     d_from = _parse_date(request.args.get("date_from"), date.today())
+    # Window runs forward from date_from, not from today — see the same fix in api.py.
     d_to = _parse_date(
         request.args.get("date_to"),
-        date.today() + timedelta(days=RULES.default_search_window_days),
+        d_from + timedelta(days=RULES.default_search_window_days),
     )
     status = request.args.get("status", "AVAILABLE")
 
