@@ -487,7 +487,22 @@ def raise_conflict(
 
 
 def detect_double_bookings() -> list[dict]:
-    """Slots holding more than one non-cancelled appointment."""
+    """Two kinds of double-booking, found together.
+
+    1. SAME_SLOT — two active appointments on one slot row. The partial unique
+       index makes this impossible through any normal path, so a finding here
+       means something wrote to the table directly. Checked anyway: a guard you
+       never verify is a guard you do not have.
+
+    2. TIME_OVERLAP — two active appointments for the same doctor whose slot
+       times overlap, on *different* slot rows. No unique index can catch this,
+       because the rows are individually legal. It is what actually happens in
+       practice: a doctor's consult length changes, slots get regenerated, and
+       the new grid overlaps appointments booked against the old one.
+
+    Both return the same shape, ranked by who has the strongest claim to keep
+    the time, so Strategy A in bot_conflict.md handles them identically.
+    """
     rows = (
         db.session.query(Appointment.slot_id, func.count(Appointment.appointment_id).label("n"))
         .filter(Appointment.status.in_(Appointment.ACTIVE_STATUSES))
@@ -506,24 +521,80 @@ def detect_double_bookings() -> list[dict]:
             .order_by(Appointment.created_at, Appointment.appointment_id)
             .all()
         )
-        # Rank by who has the strongest claim (rules.yaml keeper_ranking).
-        ranked = sorted(
-            appts,
-            key=lambda a: (
-                RULES.priority_rank(a.priority),
-                0 if a.is_follow_up else 1,
-                a.created_at,
-                a.appointment_id,
-            ),
-        )
+        ranked = rank_claim(appts)
         findings.append(
             {
+                "kind": "SAME_SLOT",
                 "slot_id": slot_id,
                 "count": n,
                 "keeper": ranked[0].to_dict(),
                 "losers": [a.to_dict() for a in ranked[1:]],
             }
         )
+
+    findings.extend(detect_time_overlaps())
+    return findings
+
+
+def rank_claim(appts: list[Appointment]) -> list[Appointment]:
+    """rules.yaml conflicts.types.DOUBLE_BOOKING.keeper_ranking.
+
+    Deterministic all the way down — the final appointment_id tie-break is what
+    makes the Phase 4 tests reproducible.
+    """
+    return sorted(
+        appts,
+        key=lambda a: (
+            RULES.priority_rank(a.priority),
+            0 if a.is_follow_up else 1,
+            a.created_at,
+            a.appointment_id,
+        ),
+    )
+
+
+def detect_time_overlaps() -> list[dict]:
+    """Same doctor, overlapping slot times, different slot rows."""
+    rows = (
+        db.session.query(Appointment, Slot)
+        .join(Slot, Appointment.slot_id == Slot.slot_id)
+        .filter(Appointment.status.in_(Appointment.ACTIVE_STATUSES))
+        .order_by(Appointment.doctor_id, Slot.slot_date, Slot.start_time)
+        .all()
+    )
+
+    by_doctor_day: dict[tuple, list] = {}
+    for appt, slot in rows:
+        by_doctor_day.setdefault((appt.doctor_id, slot.slot_date), []).append((appt, slot))
+
+    findings = []
+    seen_pairs = set()
+    for (doctor_id, day), items in by_doctor_day.items():
+        items.sort(key=lambda x: x[1].start_time)
+        for i in range(len(items) - 1):
+            a_appt, a_slot = items[i]
+            for b_appt, b_slot in items[i + 1:]:
+                if b_slot.start_time >= a_slot.end_time:
+                    break  # sorted, so nothing further can overlap
+                if a_slot.slot_id == b_slot.slot_id:
+                    continue  # already reported as SAME_SLOT
+                pair = tuple(sorted((a_appt.appointment_id, b_appt.appointment_id)))
+                if pair in seen_pairs:
+                    continue
+                seen_pairs.add(pair)
+
+                ranked = rank_claim([a_appt, b_appt])
+                findings.append(
+                    {
+                        "kind": "TIME_OVERLAP",
+                        "slot_id": ranked[0].slot_id,
+                        "doctor_id": doctor_id,
+                        "date": day.isoformat(),
+                        "count": 2,
+                        "keeper": ranked[0].to_dict(),
+                        "losers": [ranked[1].to_dict()],
+                    }
+                )
     return findings
 
 
