@@ -1,0 +1,86 @@
+<Activity mc:Ignorable="sap sap2010" x:Class="SendSMS"
+ xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+ xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+ xmlns:s="clr-namespace:System;assembly=System.Private.CoreLib"
+ xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
+ xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
+ xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib"
+ xmlns:sd="clr-namespace:System.Data;assembly=System.Data.Common"
+ xmlns:ui="http://schemas.uipath.com/workflow/activities"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <x:Members>
+    <x:Property Name="in_To" Type="InArgument(x:String)" />
+    <x:Property Name="in_Body" Type="InArgument(x:String)" />
+    <x:Property Name="in_AccountSid" Type="InArgument(x:String)" />
+    <x:Property Name="in_AuthToken" Type="InArgument(s:Security.SecureString)" />
+    <x:Property Name="in_FromNumber" Type="InArgument(x:String)" />
+    <x:Property Name="in_DryRun" Type="InArgument(x:Boolean)" />
+    <x:Property Name="out_Success" Type="OutArgument(x:Boolean)" />
+    <x:Property Name="out_MessageId" Type="OutArgument(x:String)" />
+    <x:Property Name="out_ErrorCode" Type="OutArgument(x:String)" />
+    <x:Property Name="out_Retryable" Type="OutArgument(x:Boolean)" />
+  </x:Members>
+  <sap2010:ExpressionActivityEditor.ExpressionActivityEditor>VisualBasic</sap2010:ExpressionActivityEditor.ExpressionActivityEditor>
+  <TextExpression.NamespacesForImplementation>
+    <scg:List x:TypeArguments="x:String" Capacity="8">
+      <x:String>System</x:String>
+      <x:String>System.Collections.Generic</x:String>
+      <x:String>System.Data</x:String>
+      <x:String>System.Linq</x:String>
+      <x:String>UiPath.Core</x:String>
+      <x:String>UiPath.Core.Activities</x:String>
+    </scg:List>
+  </TextExpression.NamespacesForImplementation>
+  <TextExpression.ReferencesForImplementation>
+    <scg:List x:TypeArguments="AssemblyReference" Capacity="8">
+      <AssemblyReference>System.Linq</AssemblyReference>
+      <AssemblyReference>UiPath.System.Activities</AssemblyReference>
+      <AssemblyReference>UiPath.WebAPI.Activities</AssemblyReference>
+    </scg:List>
+  </TextExpression.ReferencesForImplementation>
+<Sequence DisplayName="Send SMS via Twilio" sap2010:WorkflowViewState.IdRef="Sequence_14">
+<sap2010:Annotation.AnnotationText>shared/SendSMS.xaml — Twilio wrapper used by all three bots.</sap2010:Annotation.AnnotationText>
+<Sequence DisplayName="1. Guard" sap2010:WorkflowViewState.IdRef="Sequence_2">
+<ui:Comment Text='TODO(Studio): Validate in_To against ^\+[1-9]\d{9,14}$ ; if invalid out_ErrorCode = "INVALID_CONTACT", out_Retryable = False, exit' sap2010:WorkflowViewState.IdRef="Comment_1" />
+</Sequence>
+<Sequence DisplayName="2. Dry run" sap2010:WorkflowViewState.IdRef="Sequence_4">
+<sap2010:Annotation.AnnotationText>DryRunNotifications = True during Phase 4 batch tests. The whole pipeline runs,
+the notification is logged with provider DRYRUN, and no Twilio trial credit is spent.</sap2010:Annotation.AnnotationText>
+<ui:Comment Text='TODO(Studio): If in_DryRun: log masked recipient and body length, out_Success = True, out_MessageId = "DRYRUN-" &amp; Guid, exit' sap2010:WorkflowViewState.IdRef="Comment_3" />
+</Sequence>
+<TryCatch DisplayName="3. Call Twilio" sap2010:WorkflowViewState.IdRef="TryCatch_10">
+<sap2010:Annotation.AnnotationText>Twilio's Messages API takes application/x-www-form-urlencoded, not JSON.
+A literal + in the To number must be URL-encoded as %2B, or Twilio receives a
+space and rejects the number with 21211.
+
+Response handling:
+  201                 success, keep the sid as provider_message_id
+  429, 5xx, timeout   out_Retryable = True
+  21211 invalid To    out_Retryable = False, INVALID_CONTACT
+  21608 unverified    out_Retryable = False — expected on the free trial, which
+                      only delivers to numbers verified in the Twilio console
+  21610 unsubscribed  out_Retryable = False, ErrorCode UNSUBSCRIBED — the caller
+                      must PATCH the patient's sms_consent to false</sap2010:Annotation.AnnotationText>
+<TryCatch.Try>
+<Sequence DisplayName="HTTP Request" sap2010:WorkflowViewState.IdRef="Sequence_7">
+<ui:Comment Text="TODO(Studio): POST https://api.twilio.com/2010-04-01/Accounts/{in_AccountSid}/Messages.json ; Basic auth in_AccountSid:in_AuthToken ; form fields To, From, Body" sap2010:WorkflowViewState.IdRef="Comment_5" />
+<ui:Comment Text="TODO(Studio): 201 -&gt; out_Success = True, out_MessageId = sid from response" sap2010:WorkflowViewState.IdRef="Comment_6" />
+</Sequence>
+</TryCatch.Try>
+<TryCatch.Catches>
+<Catch x:TypeArguments="s:Exception" sap2010:WorkflowViewState.IdRef="Catch_11">
+<ActivityAction x:TypeArguments="s:Exception">
+<ActivityAction.Argument><DelegateInArgument x:TypeArguments="s:Exception" Name="ex" /></ActivityAction.Argument>
+<Sequence DisplayName="Twilio call failed" sap2010:WorkflowViewState.IdRef="Sequence_9">
+<ui:Comment Text="TODO(Studio): out_Success = False ; map status and Twilio error code as above" sap2010:WorkflowViewState.IdRef="Comment_8" />
+</Sequence>
+</ActivityAction>
+</Catch>
+</TryCatch.Catches>
+</TryCatch>
+<Sequence DisplayName="4. Log" sap2010:WorkflowViewState.IdRef="Sequence_13">
+<sap2010:Annotation.AnnotationText>Log the recipient masked (+9198****3210). Full phone numbers never go into Orchestrator logs.</sap2010:Annotation.AnnotationText>
+<ui:LogMessage DisplayName="Log masked result" Level="Info" Message='["SMS to " &amp; in_To.Substring(0, 5) &amp; "****" &amp; in_To.Substring(in_To.Length - 4) &amp; " success=" &amp; out_Success.ToString()]' sap2010:WorkflowViewState.IdRef="LogMessage_12" />
+</Sequence>
+</Sequence>
+</Activity>
