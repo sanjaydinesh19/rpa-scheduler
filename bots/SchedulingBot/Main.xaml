@@ -2,359 +2,842 @@
  xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
  xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;assembly=System.Activities"
+ xmlns:s="clr-namespace:System;assembly=System.Private.CoreLib"
  xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
  xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
  xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib"
  xmlns:sd="clr-namespace:System.Data;assembly=System.Data.Common"
  xmlns:ui="http://schemas.uipath.com/workflow/activities"
+ xmlns:jl="clr-namespace:Newtonsoft.Json.Linq;assembly=Newtonsoft.Json"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <x:Members>
-    <x:Property Name="in_QueueName" Type="InArgument(x:String)" />
+    <x:Property Name="in_BaseUrl" Type="InArgument(x:String)" />
+    <x:Property Name="in_ApiKey" Type="InArgument(s:Security.SecureString)" />
     <x:Property Name="in_MaxTransactions" Type="InArgument(x:Int32)" />
+    <x:Property Name="in_MaxRetryAttempts" Type="InArgument(x:Int32)" />
+    <x:Property Name="in_DryRunNotifications" Type="InArgument(x:Boolean)" />
+    <x:Property Name="in_ExcelPath" Type="InArgument(x:String)" />
+    <x:Property Name="in_HospitalName" Type="InArgument(x:String)" />
+    <x:Property Name="in_TwilioSid" Type="InArgument(x:String)" />
+    <x:Property Name="in_TwilioAuth" Type="InArgument(s:Security.SecureString)" />
+    <x:Property Name="in_TwilioFrom" Type="InArgument(x:String)" />
+    <x:Property Name="in_SendGridKey" Type="InArgument(s:Security.SecureString)" />
+    <x:Property Name="in_SendGridFrom" Type="InArgument(x:String)" />
     <x:Property Name="out_Processed" Type="OutArgument(x:Int32)" />
     <x:Property Name="out_Failed" Type="OutArgument(x:Int32)" />
   </x:Members>
   <sap2010:ExpressionActivityEditor.ExpressionActivityEditor>VisualBasic</sap2010:ExpressionActivityEditor.ExpressionActivityEditor>
-  <sap2010:WorkflowViewState.IdRef>Main_1</sap2010:WorkflowViewState.IdRef>
   <TextExpression.NamespacesForImplementation>
     <scg:List x:TypeArguments="x:String" Capacity="8">
       <x:String>System</x:String>
       <x:String>System.Collections.Generic</x:String>
       <x:String>System.Data</x:String>
       <x:String>System.Linq</x:String>
+      <x:String>System.Text.RegularExpressions</x:String>
       <x:String>UiPath.Core</x:String>
       <x:String>UiPath.Core.Activities</x:String>
+      <x:String>Newtonsoft.Json.Linq</x:String>
     </scg:List>
   </TextExpression.NamespacesForImplementation>
   <TextExpression.ReferencesForImplementation>
     <scg:List x:TypeArguments="AssemblyReference" Capacity="8">
-      <AssemblyReference>System.Data.Common</AssemblyReference>
       <AssemblyReference>System.Linq</AssemblyReference>
+      <AssemblyReference>System.Text.RegularExpressions</AssemblyReference>
       <AssemblyReference>UiPath.System.Activities</AssemblyReference>
-      <AssemblyReference>UiPath.UIAutomation.Activities</AssemblyReference>
+      <AssemblyReference>UiPath.Web.Activities</AssemblyReference>
+      <AssemblyReference>UiPath.Excel.Activities</AssemblyReference>
+      <AssemblyReference>Newtonsoft.Json</AssemblyReference>
     </scg:List>
   </TextExpression.ReferencesForImplementation>
 
-  <Sequence DisplayName="Scheduling Bot - Main" sap2010:WorkflowViewState.IdRef="Sequence_1">
-    <sap2010:Annotation.AnnotationText>SCHEDULING BOT — queue-driven performer.
+  <Sequence DisplayName="Scheduling Bot" sap2010:WorkflowViewState.IdRef="Seq_Root">
+    <sap2010:Annotation.AnnotationText>SCHEDULING BOT — REST-driven flow.
 
-Implements docs/phase2/bot_scheduling.md. Build the activity tree inside each
-stage below; the stages, their order and the guards are the design and must not
-be rearranged without changing that document first.
+Pulls PENDING_PUSH BookingRequests from the Mock HMS, allocates the best slot,
+locks + books + releases, mirrors to Excel, sends confirmation, marks the
+request PROCESSED. Uses shared/HMS_Client.xaml for every HMS call so auth,
+retry and error envelope handling live in one place.
 
-TRANSACTION SHAPE (REFramework):
-  Init -> GetTransactionItem -> Process -> SetTransactionStatus -> loop
-
-THE THREE GUARDS AGAINST DOUBLE-BOOKING (all three are required):
-  1. POST /api/v1/slots/{id}/lock          120s TTL
-  2. GET  /api/v1/slots/{id}               re-check status AND version
-  3. Partial unique index in the HMS       last line of defence
-
-The lock release in the Finally block is mandatory. A crashed transaction that
-keeps its lock silently degrades the next two minutes of bookings.</sap2010:Annotation.AnnotationText>
+The Orchestrator Queue Trigger (queue: BookingRequests) can call this same
+process; simply swap the "poll PENDING_PUSH" call for Get Transaction Item and
+translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.AnnotationText>
     <Sequence.Variables>
-      <Variable x:TypeArguments="x:Object" Name="TransactionItem" />
-      <Variable x:TypeArguments="scg:Dictionary(x:String, x:Object)" Name="Config" />
-      <Variable x:TypeArguments="sd:DataTable" Name="dtRules" />
-      <Variable x:TypeArguments="sd:DataTable" Name="dtSlots" />
-      <Variable x:TypeArguments="x:Int32" Name="TransactionNumber" />
-      <Variable x:TypeArguments="x:Int32" Name="AttemptsUsed" />
+      <Variable x:TypeArguments="x:Int32" Name="StatusCode" />
+      <Variable x:TypeArguments="x:String" Name="ResponseJson" />
+      <Variable x:TypeArguments="x:String" Name="ErrorCode" />
+      <Variable x:TypeArguments="x:Boolean" Name="Retryable" />
+      <Variable x:TypeArguments="jl:JArray" Name="Pending" />
+      <Variable x:TypeArguments="x:Int32" Name="Idx" Default="[0]" />
+      <Variable x:TypeArguments="jl:JObject" Name="CurrentReq" />
+      <Variable x:TypeArguments="x:String" Name="RequestRef" />
+      <Variable x:TypeArguments="x:String" Name="Phone" />
+      <Variable x:TypeArguments="x:String" Name="Email" />
+      <Variable x:TypeArguments="x:String" Name="PatientName" />
+      <Variable x:TypeArguments="x:String" Name="Department" />
+      <Variable x:TypeArguments="x:String" Name="Urgency" />
+      <Variable x:TypeArguments="x:String" Name="TimeBand" />
+      <Variable x:TypeArguments="x:String" Name="DateFrom" />
+      <Variable x:TypeArguments="x:String" Name="DateTo" />
+      <Variable x:TypeArguments="x:Boolean" Name="IsFollowUp" />
+      <Variable x:TypeArguments="x:String" Name="Reason" />
+      <Variable x:TypeArguments="x:Int32" Name="PreferredDoctorId" />
       <Variable x:TypeArguments="x:Int32" Name="PatientId" />
+      <Variable x:TypeArguments="x:Int32" Name="PatientAge" />
+      <Variable x:TypeArguments="x:String" Name="PatientChannel" />
+      <Variable x:TypeArguments="x:Boolean" Name="SmsConsent" />
+      <Variable x:TypeArguments="x:Boolean" Name="EmailConsent" />
+      <Variable x:TypeArguments="x:String" Name="Priority" />
+      <Variable x:TypeArguments="jl:JArray" Name="Slots" />
+      <Variable x:TypeArguments="jl:JObject" Name="SelectedSlot" />
       <Variable x:TypeArguments="x:Int32" Name="SelectedSlotId" />
       <Variable x:TypeArguments="x:Int32" Name="SelectedSlotVersion" />
       <Variable x:TypeArguments="x:Int32" Name="AllocationPass" />
-      <Variable x:TypeArguments="x:String" Name="Priority" />
-      <Variable x:TypeArguments="x:String" Name="ReferenceNo" />
-      <Variable x:TypeArguments="x:String" Name="ErrorCode" />
-      <Variable x:TypeArguments="x:Boolean" Name="HasSlot" />
+      <Variable x:TypeArguments="scg:List(x:Int32)" Name="ExcludedSlots" />
+      <Variable x:TypeArguments="x:Int32" Name="AttemptsUsed" Default="[0]" />
+      <Variable x:TypeArguments="x:Boolean" Name="Booked" Default="[False]" />
+      <Variable x:TypeArguments="x:Int32" Name="AppointmentId" />
+      <Variable x:TypeArguments="x:String" Name="AppointmentRef" />
+      <Variable x:TypeArguments="x:String" Name="AppointmentDateTime" />
+      <Variable x:TypeArguments="x:String" Name="DoctorName" />
+      <Variable x:TypeArguments="x:String" Name="NotificationChannel" />
+      <Variable x:TypeArguments="x:Boolean" Name="NotifOk" />
+      <Variable x:TypeArguments="x:String" Name="NotifMessageId" />
+      <Variable x:TypeArguments="x:String" Name="NotifError" />
+      <Variable x:TypeArguments="x:Boolean" Name="NotifRetryable" />
+      <Variable x:TypeArguments="x:String" Name="MsgBody" />
+      <Variable x:TypeArguments="jl:JObject" Name="J" />
+      <Variable x:TypeArguments="x:String" Name="FailureReason" />
     </Sequence.Variables>
 
-    <ui:LogMessage DisplayName="Log - Start" Level="Info"
-      Message="&quot;SchedulingBot starting. Queue: &quot; &amp; in_QueueName"
-      sap2010:WorkflowViewState.IdRef="LogMessage_1" />
+    <Assign DisplayName="Init counters" sap2010:WorkflowViewState.IdRef="Assign_InitCounters">
+      <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Processed]</OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:Int32">[0]</InArgument></Assign.Value>
+    </Assign>
 
-    <Sequence DisplayName="1. Initialisation" sap2010:WorkflowViewState.IdRef="Sequence_2">
-      <sap2010:Annotation.AnnotationText>1. INITIALISATION — Workflows/InitAllSettings.xaml + InitAllApplications.xaml
+    <ui:LogMessage DisplayName="Log start" Level="Info"
+      Message="[&quot;SchedulingBot starting. Base=&quot; &amp; in_BaseUrl &amp; &quot; MaxTx=&quot; &amp; in_MaxTransactions.ToString()]"
+      sap2010:WorkflowViewState.IdRef="Log_Start" />
 
-  a. Read Data/Config.xlsx -> Config dictionary
-  b. Read Data/rules.xlsx  -> dtRules (generated by tools/yaml_to_xlsx.py)
-  c. Get Orchestrator assets: HMS_BaseUrl, HMS_ApiKey, Twilio_*, SendGrid_*,
-     Excel_FilePath, MaxRetryAttempts, DryRunNotifications
-  d. Open the browser at Config("HMS_BaseUrl") and log in
+    <InvokeWorkflowFile DisplayName="GET pending booking requests"
+      sap2010:WorkflowViewState.IdRef="Invoke_GetPending"
+      WorkflowFileName="..\..\shared\HMS_Client.xaml">
+      <InvokeWorkflowFile.Arguments>
+        <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+        <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+        <InArgument x:TypeArguments="x:String" x:Key="in_Method">["GET"]</InArgument>
+        <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/booking-requests?queue_status=PENDING_PUSH&amp;limit=" &amp; in_MaxTransactions.ToString()]</InArgument>
+        <InArgument x:TypeArguments="x:String" x:Key="in_Body">[""]</InArgument>
+        <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[3]</InArgument>
+        <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+        <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+        <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+        <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+      </InvokeWorkflowFile.Arguments>
+    </InvokeWorkflowFile>
 
-  Any failure here is a SYSTEM exception — stop the job rather than failing
-  transactions one at a time against a broken environment.</sap2010:Annotation.AnnotationText>
-      <ui:Comment Text="TODO(Studio): Invoke InitAllSettings.xaml and InitAllApplications.xaml"
-        sap2010:WorkflowViewState.IdRef="Comment_1" />
-    </Sequence>
+    <If DisplayName="Failed to fetch pending"
+      Condition="[StatusCode &lt; 200 OrElse StatusCode &gt;= 300]"
+      sap2010:WorkflowViewState.IdRef="If_FetchFail">
+      <If.Then>
+        <Throw
+          Exception="[New System.InvalidOperationException(&quot;Could not fetch pending booking requests: &quot; &amp; ErrorCode)]"
+          sap2010:WorkflowViewState.IdRef="Throw_Fetch" />
+      </If.Then>
+    </If>
 
-    <While DisplayName="2. Transaction loop" sap2010:WorkflowViewState.IdRef="While_1"
-      Condition="[TransactionNumber &lt; in_MaxTransactions]">
-      <sap2010:Annotation.AnnotationText>2. TRANSACTION LOOP
+    <Assign DisplayName="Parse pending"
+      sap2010:WorkflowViewState.IdRef="Assign_ParsePending">
+      <Assign.To><OutArgument x:TypeArguments="jl:JArray">[Pending]</OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="jl:JArray">[Newtonsoft.Json.Linq.JArray.Parse(ResponseJson)]</InArgument></Assign.Value>
+    </Assign>
 
-Get Transaction Item from the BookingRequests queue. Exit when it returns
-Nothing (queue empty) or in_MaxTransactions is reached.</sap2010:Annotation.AnnotationText>
-      <Sequence DisplayName="Transaction" sap2010:WorkflowViewState.IdRef="Sequence_3">
+    <ui:LogMessage DisplayName="Log pending count" Level="Info"
+      Message="[&quot;Found &quot; &amp; Pending.Count.ToString() &amp; &quot; pending booking requests&quot;]"
+      sap2010:WorkflowViewState.IdRef="Log_PendCount" />
 
-        <Sequence DisplayName="2a. Get transaction item" sap2010:WorkflowViewState.IdRef="Sequence_4">
-          <sap2010:Annotation.AnnotationText>Get Transaction Item (QueueName: in_QueueName).
-If TransactionItem Is Nothing -> Break out of the loop; the queue is empty.
+    <While DisplayName="Process each request"
+      Condition="[Idx &lt; Pending.Count AndAlso (out_Processed + out_Failed) &lt; in_MaxTransactions]"
+      sap2010:WorkflowViewState.IdRef="While_Loop">
+      <Sequence sap2010:WorkflowViewState.IdRef="Seq_Tx">
 
-SpecificContent fields:
-  RequestId, PatientName, Phone, Email, Department, PreferredDoctor,
-  PreferredDateFrom, PreferredDateTo, TimeBand, Urgency, IsFollowUp, Reason</sap2010:Annotation.AnnotationText>
-          <ui:Comment Text="TODO(Studio): Get Transaction Item -> TransactionItem"
-            sap2010:WorkflowViewState.IdRef="Comment_2" />
-        </Sequence>
+        <Assign DisplayName="Current request" sap2010:WorkflowViewState.IdRef="Assign_Current">
+          <Assign.To><OutArgument x:TypeArguments="jl:JObject">[CurrentReq]</OutArgument></Assign.To>
+          <Assign.Value><InArgument x:TypeArguments="jl:JObject">[CType(Pending(Idx), Newtonsoft.Json.Linq.JObject)]</InArgument></Assign.Value>
+        </Assign>
 
-        <TryCatch DisplayName="2b. Process transaction" sap2010:WorkflowViewState.IdRef="TryCatch_1">
+        <Assign DisplayName="Extract RequestRef" sap2010:WorkflowViewState.IdRef="Assign_Ref">
+          <Assign.To><OutArgument x:TypeArguments="x:String">[RequestRef]</OutArgument></Assign.To>
+          <Assign.Value><InArgument x:TypeArguments="x:String">[CurrentReq("RequestId").ToString()]</InArgument></Assign.Value>
+        </Assign>
+
+        <ui:LogMessage DisplayName="Log tx start" Level="Info"
+          Message="[&quot;Transaction &quot; &amp; (Idx + 1).ToString() &amp; &quot;/&quot; &amp; Pending.Count.ToString() &amp; &quot; ref=&quot; &amp; RequestRef]"
+          sap2010:WorkflowViewState.IdRef="Log_TxStart" />
+
+        <TryCatch DisplayName="Process transaction" sap2010:WorkflowViewState.IdRef="Try_Tx">
           <TryCatch.Try>
-            <Sequence DisplayName="Process" sap2010:WorkflowViewState.IdRef="Sequence_5">
+            <Sequence sap2010:WorkflowViewState.IdRef="Seq_Process">
 
-              <Sequence DisplayName="Step 1 - Validate request" sap2010:WorkflowViewState.IdRef="Sequence_6">
-                <sap2010:Annotation.AnnotationText>Validate the queue item before touching the HMS.
-  Phone matches ^\+[1-9]\d{9,14}$ , dates present and not reversed,
-  department known, urgency in NORMAL/HIGH/URGENT.
+              <!-- Extract fields -->
+              <Sequence DisplayName="Step 1 - Extract and validate" sap2010:WorkflowViewState.IdRef="Seq_Extract">
+                <Assign sap2010:WorkflowViewState.IdRef="Assign_Phone">
+                  <Assign.To><OutArgument x:TypeArguments="x:String">[Phone]</OutArgument></Assign.To>
+                  <Assign.Value><InArgument x:TypeArguments="x:String">[CurrentReq("Phone").ToString()]</InArgument></Assign.Value>
+                </Assign>
+                <Assign sap2010:WorkflowViewState.IdRef="Assign_Email">
+                  <Assign.To><OutArgument x:TypeArguments="x:String">[Email]</OutArgument></Assign.To>
+                  <Assign.Value><InArgument x:TypeArguments="x:String">[If(CurrentReq("Email") Is Nothing, "", CurrentReq("Email").ToString())]</InArgument></Assign.Value>
+                </Assign>
+                <Assign sap2010:WorkflowViewState.IdRef="Assign_PName">
+                  <Assign.To><OutArgument x:TypeArguments="x:String">[PatientName]</OutArgument></Assign.To>
+                  <Assign.Value><InArgument x:TypeArguments="x:String">[CurrentReq("PatientName").ToString()]</InArgument></Assign.Value>
+                </Assign>
+                <Assign sap2010:WorkflowViewState.IdRef="Assign_Dept">
+                  <Assign.To><OutArgument x:TypeArguments="x:String">[Department]</OutArgument></Assign.To>
+                  <Assign.Value><InArgument x:TypeArguments="x:String">[CurrentReq("Department").ToString()]</InArgument></Assign.Value>
+                </Assign>
+                <Assign sap2010:WorkflowViewState.IdRef="Assign_Urg">
+                  <Assign.To><OutArgument x:TypeArguments="x:String">[Urgency]</OutArgument></Assign.To>
+                  <Assign.Value><InArgument x:TypeArguments="x:String">[CurrentReq("Urgency").ToString().ToUpper()]</InArgument></Assign.Value>
+                </Assign>
+                <Assign sap2010:WorkflowViewState.IdRef="Assign_Band">
+                  <Assign.To><OutArgument x:TypeArguments="x:String">[TimeBand]</OutArgument></Assign.To>
+                  <Assign.Value><InArgument x:TypeArguments="x:String">[If(CurrentReq("TimeBand") Is Nothing, "ANY", CurrentReq("TimeBand").ToString().ToUpper())]</InArgument></Assign.Value>
+                </Assign>
+                <Assign sap2010:WorkflowViewState.IdRef="Assign_DFrom">
+                  <Assign.To><OutArgument x:TypeArguments="x:String">[DateFrom]</OutArgument></Assign.To>
+                  <Assign.Value><InArgument x:TypeArguments="x:String">[CurrentReq("PreferredDateFrom").ToString()]</InArgument></Assign.Value>
+                </Assign>
+                <Assign sap2010:WorkflowViewState.IdRef="Assign_DTo">
+                  <Assign.To><OutArgument x:TypeArguments="x:String">[DateTo]</OutArgument></Assign.To>
+                  <Assign.Value><InArgument x:TypeArguments="x:String">[CurrentReq("PreferredDateTo").ToString()]</InArgument></Assign.Value>
+                </Assign>
+                <Assign sap2010:WorkflowViewState.IdRef="Assign_Follow">
+                  <Assign.To><OutArgument x:TypeArguments="x:Boolean">[IsFollowUp]</OutArgument></Assign.To>
+                  <Assign.Value><InArgument x:TypeArguments="x:Boolean">[CurrentReq("IsFollowUp") IsNot Nothing AndAlso Boolean.Parse(CurrentReq("IsFollowUp").ToString())]</InArgument></Assign.Value>
+                </Assign>
+                <Assign sap2010:WorkflowViewState.IdRef="Assign_Reason">
+                  <Assign.To><OutArgument x:TypeArguments="x:String">[Reason]</OutArgument></Assign.To>
+                  <Assign.Value><InArgument x:TypeArguments="x:String">[If(CurrentReq("Reason") Is Nothing, "", CurrentReq("Reason").ToString())]</InArgument></Assign.Value>
+                </Assign>
+                <Assign sap2010:WorkflowViewState.IdRef="Assign_PrefDoc">
+                  <Assign.To><OutArgument x:TypeArguments="x:Int32">[PreferredDoctorId]</OutArgument></Assign.To>
+                  <Assign.Value><InArgument x:TypeArguments="x:Int32">[If(CurrentReq("PreferredDoctor") Is Nothing OrElse CurrentReq("PreferredDoctor").ToString().Equals("Any", StringComparison.OrdinalIgnoreCase) OrElse Not Integer.TryParse(CurrentReq("PreferredDoctor").ToString(), 0), 0, Integer.Parse(CurrentReq("PreferredDoctor").ToString()))]</InArgument></Assign.Value>
+                </Assign>
 
-Invalid -> throw BusinessRuleException("VALIDATION_ERROR").
-NEVER retried: retrying a malformed phone number three times just burns
-capacity and still fails.</sap2010:Annotation.AnnotationText>
-                <ui:Comment Text="TODO(Studio): validate SpecificContent fields"
-                  sap2010:WorkflowViewState.IdRef="Comment_3" />
+                <If DisplayName="Validate phone E.164"
+                  Condition="[Not Regex.IsMatch(Phone, &quot;^\+[1-9]\d{9,14}$&quot;)]"
+                  sap2010:WorkflowViewState.IdRef="If_ValPhone">
+                  <If.Then>
+                    <Throw
+                      Exception="[New UiPath.Core.BusinessRuleException(&quot;VALIDATION_ERROR: phone not E.164&quot;)]"
+                      sap2010:WorkflowViewState.IdRef="Throw_Phone" />
+                  </If.Then>
+                </If>
+
+                <If DisplayName="Validate date range"
+                  Condition="[Date.Parse(DateFrom) &gt; Date.Parse(DateTo)]"
+                  sap2010:WorkflowViewState.IdRef="If_ValDate">
+                  <If.Then>
+                    <Throw
+                      Exception="[New UiPath.Core.BusinessRuleException(&quot;VALIDATION_ERROR: date range reversed&quot;)]"
+                      sap2010:WorkflowViewState.IdRef="Throw_Date" />
+                  </If.Then>
+                </If>
+
+                <If DisplayName="Validate urgency"
+                  Condition="[Urgency &lt;&gt; &quot;NORMAL&quot; AndAlso Urgency &lt;&gt; &quot;HIGH&quot; AndAlso Urgency &lt;&gt; &quot;URGENT&quot;]"
+                  sap2010:WorkflowViewState.IdRef="If_ValUrg">
+                  <If.Then>
+                    <Throw
+                      Exception="[New UiPath.Core.BusinessRuleException(&quot;VALIDATION_ERROR: urgency not one of NORMAL/HIGH/URGENT&quot;)]"
+                      sap2010:WorkflowViewState.IdRef="Throw_Urg" />
+                  </If.Then>
+                </If>
               </Sequence>
 
-              <Sequence DisplayName="Step 2 - Lookup or register patient" sap2010:WorkflowViewState.IdRef="Sequence_7">
-                <sap2010:Annotation.AnnotationText>Workflows/LookupOrRegisterPatient.xaml — UI AUTOMATION.
+              <!-- Find or register patient -->
+              <Sequence DisplayName="Step 2 - Find or register patient" sap2010:WorkflowViewState.IdRef="Seq_Patient">
+                <InvokeWorkflowFile DisplayName="GET patients by phone"
+                  sap2010:WorkflowViewState.IdRef="Invoke_GetPatient"
+                  WorkflowFileName="..\..\shared\HMS_Client.xaml">
+                  <InvokeWorkflowFile.Arguments>
+                    <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+                    <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+                    <InArgument x:TypeArguments="x:String" x:Key="in_Method">["GET"]</InArgument>
+                    <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/patients?phone=" &amp; System.Net.WebUtility.UrlEncode(Phone)]</InArgument>
+                    <InArgument x:TypeArguments="x:String" x:Key="in_Body">[""]</InArgument>
+                    <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[3]</InArgument>
+                    <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+                    <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+                    <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+                    <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+                  </InvokeWorkflowFile.Arguments>
+                </InvokeWorkflowFile>
 
-  Navigate /admin/patients
-  Type Into  [data-automation-id='pat-search-input']  &lt;- Phone (the dedup key)
-  Click      [data-automation-id='pat-search-btn']
-  If element [data-automation-id='pat-no-results'] exists:
-      Click  [data-automation-id='pat-new-btn']
-      Fill   pat-new-name / pat-new-phone / pat-new-email / pat-new-dob
-      Click  [data-automation-id='pat-new-save']
-      Scrape [data-automation-id='pat-new-id'] -> PatientId
-  Else:
-      Scrape first [data-automation-id='pat-row-id'] -> PatientId
+                <If DisplayName="Patient found?"
+                  Condition="[Not String.IsNullOrWhiteSpace(ResponseJson) AndAlso Newtonsoft.Json.Linq.JArray.Parse(ResponseJson).Count &gt; 0]"
+                  sap2010:WorkflowViewState.IdRef="If_PatFound">
+                  <If.Then>
+                    <Sequence sap2010:WorkflowViewState.IdRef="Seq_PatFound">
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_PatObj">
+                        <Assign.To><OutArgument x:TypeArguments="jl:JObject">[J]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="jl:JObject">[CType(Newtonsoft.Json.Linq.JArray.Parse(ResponseJson)(0), Newtonsoft.Json.Linq.JObject)]</InArgument></Assign.Value>
+                      </Assign>
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_PatId">
+                        <Assign.To><OutArgument x:TypeArguments="x:Int32">[PatientId]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="x:Int32">[Integer.Parse(J("patient_id").ToString())]</InArgument></Assign.Value>
+                      </Assign>
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_PatAge">
+                        <Assign.To><OutArgument x:TypeArguments="x:Int32">[PatientAge]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="x:Int32">[Integer.Parse(J("age").ToString())]</InArgument></Assign.Value>
+                      </Assign>
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_PatCh">
+                        <Assign.To><OutArgument x:TypeArguments="x:String">[PatientChannel]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="x:String">[J("preferred_channel").ToString()]</InArgument></Assign.Value>
+                      </Assign>
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_PatSMS">
+                        <Assign.To><OutArgument x:TypeArguments="x:Boolean">[SmsConsent]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="x:Boolean">[Boolean.Parse(J("sms_consent").ToString())]</InArgument></Assign.Value>
+                      </Assign>
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_PatEml">
+                        <Assign.To><OutArgument x:TypeArguments="x:Boolean">[EmailConsent]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="x:Boolean">[Boolean.Parse(J("email_consent").ToString())]</InArgument></Assign.Value>
+                      </Assign>
+                    </Sequence>
+                  </If.Then>
+                  <If.Else>
+                    <Sequence DisplayName="Register new patient" sap2010:WorkflowViewState.IdRef="Seq_Register">
+                      <InvokeWorkflowFile DisplayName="POST patients"
+                        sap2010:WorkflowViewState.IdRef="Invoke_RegPat"
+                        WorkflowFileName="..\..\shared\HMS_Client.xaml">
+                        <InvokeWorkflowFile.Arguments>
+                          <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+                          <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+                          <InArgument x:TypeArguments="x:String" x:Key="in_Method">["POST"]</InArgument>
+                          <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/patients"]</InArgument>
+                          <InArgument x:TypeArguments="x:String" x:Key="in_Body">[New Newtonsoft.Json.Linq.JObject(New Newtonsoft.Json.Linq.JProperty("full_name", PatientName), New Newtonsoft.Json.Linq.JProperty("phone", Phone), New Newtonsoft.Json.Linq.JProperty("email", Email), New Newtonsoft.Json.Linq.JProperty("date_of_birth", DateTime.Today.AddYears(-35).ToString("yyyy-MM-dd")), New Newtonsoft.Json.Linq.JProperty("gender", "O"), New Newtonsoft.Json.Linq.JProperty("preferred_channel", If(String.IsNullOrEmpty(Email), "SMS", "SMS"))).ToString()]</InArgument>
+                          <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[3]</InArgument>
+                          <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+                          <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+                          <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+                          <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+                        </InvokeWorkflowFile.Arguments>
+                      </InvokeWorkflowFile>
 
-Search is by phone and never by name: name matching must not auto-merge
-records, which is what creates duplicates in the manual process.</sap2010:Annotation.AnnotationText>
-                <ui:Comment Text="TODO(Studio): Invoke LookupOrRegisterPatient.xaml -> PatientId"
-                  sap2010:WorkflowViewState.IdRef="Comment_4" />
+                      <If Condition="[StatusCode &lt; 200 OrElse StatusCode &gt;= 300]"
+                        sap2010:WorkflowViewState.IdRef="If_RegFail">
+                        <If.Then>
+                          <Throw
+                            Exception="[New UiPath.Core.BusinessRuleException(&quot;PATIENT_REGISTRATION_FAILED: &quot; &amp; ErrorCode)]"
+                            sap2010:WorkflowViewState.IdRef="Throw_Reg" />
+                        </If.Then>
+                      </If>
+
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_NewPat">
+                        <Assign.To><OutArgument x:TypeArguments="jl:JObject">[J]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="jl:JObject">[Newtonsoft.Json.Linq.JObject.Parse(ResponseJson)]</InArgument></Assign.Value>
+                      </Assign>
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_NewPatId">
+                        <Assign.To><OutArgument x:TypeArguments="x:Int32">[PatientId]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="x:Int32">[Integer.Parse(J("patient_id").ToString())]</InArgument></Assign.Value>
+                      </Assign>
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_NewPatAge">
+                        <Assign.To><OutArgument x:TypeArguments="x:Int32">[PatientAge]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="x:Int32">[Integer.Parse(J("age").ToString())]</InArgument></Assign.Value>
+                      </Assign>
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_NewPatCh">
+                        <Assign.To><OutArgument x:TypeArguments="x:String">[PatientChannel]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="x:String">[J("preferred_channel").ToString()]</InArgument></Assign.Value>
+                      </Assign>
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_NewPatSMS">
+                        <Assign.To><OutArgument x:TypeArguments="x:Boolean">[SmsConsent]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="x:Boolean">[True]</InArgument></Assign.Value>
+                      </Assign>
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_NewPatEml">
+                        <Assign.To><OutArgument x:TypeArguments="x:Boolean">[EmailConsent]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="x:Boolean">[Not String.IsNullOrEmpty(Email)]</InArgument></Assign.Value>
+                      </Assign>
+                    </Sequence>
+                  </If.Else>
+                </If>
               </Sequence>
 
-              <Sequence DisplayName="Step 3 - Derive priority" sap2010:WorkflowViewState.IdRef="Sequence_8">
-                <sap2010:Annotation.AnnotationText>rules.yaml priority.derivation — first match wins:
-  Urgency = URGENT            -> URGENT
-  Urgency = HIGH              -> HIGH
-  Patient age &gt;= 60          -> HIGH
-  IsFollowUp = True           -> HIGH
-  otherwise                   -> NORMAL
-
-Run this BEFORE allocation: priority decides whether emergency-reserve
-slots are even eligible.</sap2010:Annotation.AnnotationText>
-                <ui:Comment Text="TODO(Studio): Assign Priority from the rules above"
-                  sap2010:WorkflowViewState.IdRef="Comment_5" />
+              <!-- Derive priority -->
+              <Sequence DisplayName="Step 3 - Derive priority" sap2010:WorkflowViewState.IdRef="Seq_Prio">
+                <Assign sap2010:WorkflowViewState.IdRef="Assign_Prio">
+                  <Assign.To><OutArgument x:TypeArguments="x:String">[Priority]</OutArgument></Assign.To>
+                  <Assign.Value><InArgument x:TypeArguments="x:String">[If(Urgency = "URGENT", "URGENT", If(Urgency = "HIGH" OrElse PatientAge &gt;= 60 OrElse IsFollowUp, "HIGH", "NORMAL"))]</InArgument></Assign.Value>
+                </Assign>
+                <ui:LogMessage DisplayName="Log priority" Level="Info"
+                  Message="[&quot;Priority=&quot; &amp; Priority &amp; &quot; age=&quot; &amp; PatientAge.ToString() &amp; &quot; followup=&quot; &amp; IsFollowUp.ToString()]"
+                  sap2010:WorkflowViewState.IdRef="Log_Prio" />
               </Sequence>
 
-              <Sequence DisplayName="Step 4 - Scrape schedule" sap2010:WorkflowViewState.IdRef="Sequence_9">
-                <sap2010:Annotation.AnnotationText>Workflows/ScrapeDoctorSchedule.xaml — UI AUTOMATION.
-
-  Navigate /admin/schedule
-  Select sch-department, sch-doctor, sch-date-from, sch-date-to, sch-status
-  Click  sch-load-btn
-  Table Extraction on [data-automation-id='sch-slot-table'] -> dtSlots
-
-Columns returned in fixed order:
-  SlotId, DoctorId, DoctorName, Department, Date, StartTime, EndTime,
-  Status, IsEmergencyReserve, Version
-
-If [data-automation-id='sch-no-slots'] exists -> HasSlot = False.</sap2010:Annotation.AnnotationText>
-                <ui:Comment Text="TODO(Studio): Invoke ScrapeDoctorSchedule.xaml -> dtSlots"
-                  sap2010:WorkflowViewState.IdRef="Comment_6" />
+              <!-- Search slots -->
+              <Sequence DisplayName="Step 4 - Search slots" sap2010:WorkflowViewState.IdRef="Seq_Search">
+                <InvokeWorkflowFile DisplayName="GET slots"
+                  sap2010:WorkflowViewState.IdRef="Invoke_GetSlots"
+                  WorkflowFileName="..\..\shared\HMS_Client.xaml">
+                  <InvokeWorkflowFile.Arguments>
+                    <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+                    <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+                    <InArgument x:TypeArguments="x:String" x:Key="in_Method">["GET"]</InArgument>
+                    <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/slots?department=" &amp; Department &amp; "&amp;date_from=" &amp; DateFrom &amp; "&amp;date_to=" &amp; DateTo &amp; "&amp;status=AVAILABLE&amp;include_reserve=" &amp; If(Priority = "URGENT", "true", "false") &amp; "&amp;limit=500"]</InArgument>
+                    <InArgument x:TypeArguments="x:String" x:Key="in_Body">[""]</InArgument>
+                    <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[3]</InArgument>
+                    <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+                    <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+                    <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+                    <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+                  </InvokeWorkflowFile.Arguments>
+                </InvokeWorkflowFile>
+                <Assign sap2010:WorkflowViewState.IdRef="Assign_Slots">
+                  <Assign.To><OutArgument x:TypeArguments="jl:JArray">[Slots]</OutArgument></Assign.To>
+                  <Assign.Value><InArgument x:TypeArguments="jl:JArray">[Newtonsoft.Json.Linq.JArray.Parse(ResponseJson)]</InArgument></Assign.Value>
+                </Assign>
+                <If Condition="[Slots.Count = 0]" sap2010:WorkflowViewState.IdRef="If_NoSlots">
+                  <If.Then>
+                    <Throw
+                      Exception="[New UiPath.Core.BusinessRuleException(&quot;NO_SLOT_AVAILABLE: no available slots in window&quot;)]"
+                      sap2010:WorkflowViewState.IdRef="Throw_NoSlots" />
+                  </If.Then>
+                </If>
+                <Assign sap2010:WorkflowViewState.IdRef="Assign_Excl">
+                  <Assign.To><OutArgument x:TypeArguments="scg:List(x:Int32)">[ExcludedSlots]</OutArgument></Assign.To>
+                  <Assign.Value><InArgument x:TypeArguments="scg:List(x:Int32)">[New System.Collections.Generic.List(Of Integer)()]</InArgument></Assign.Value>
+                </Assign>
               </Sequence>
 
-              <Sequence DisplayName="Step 5 - Allocate slot" sap2010:WorkflowViewState.IdRef="Sequence_10">
-                <sap2010:Annotation.AnnotationText>Workflows/AllocateSlot.xaml — PURE LOGIC, NO UI.
+              <!-- Lock/book with retry -->
+              <Sequence DisplayName="Step 5 - Allocate, lock and book" sap2010:WorkflowViewState.IdRef="Seq_Book">
+                <Assign sap2010:WorkflowViewState.IdRef="Assign_Attempts">
+                  <Assign.To><OutArgument x:TypeArguments="x:Int32">[AttemptsUsed]</OutArgument></Assign.To>
+                  <Assign.Value><InArgument x:TypeArguments="x:Int32">[0]</InArgument></Assign.Value>
+                </Assign>
+                <Assign sap2010:WorkflowViewState.IdRef="Assign_Booked">
+                  <Assign.To><OutArgument x:TypeArguments="x:Boolean">[Booked]</OutArgument></Assign.To>
+                  <Assign.Value><InArgument x:TypeArguments="x:Boolean">[False]</InArgument></Assign.Value>
+                </Assign>
 
-Keep this workflow free of UI activities. DataTable in, SlotId out. That is
-what makes the Phase 4 edge-case tests runnable without a browser.
+                <While Condition="[Not Booked AndAlso AttemptsUsed &lt; in_MaxRetryAttempts]"
+                  sap2010:WorkflowViewState.IdRef="While_Book">
+                  <Sequence sap2010:WorkflowViewState.IdRef="Seq_OneAttempt">
+                    <Assign sap2010:WorkflowViewState.IdRef="Assign_IncAtt">
+                      <Assign.To><OutArgument x:TypeArguments="x:Int32">[AttemptsUsed]</OutArgument></Assign.To>
+                      <Assign.Value><InArgument x:TypeArguments="x:Int32">[AttemptsUsed + 1]</InArgument></Assign.Value>
+                    </Assign>
 
-ELIGIBILITY FILTER (applied to every pass):
-  Status = AVAILABLE, SlotId not in ExcludedSlotIds, Date in window,
-  doctor active, (not emergency reserve OR Priority = URGENT),
-  doctor daily count &lt; cap, department daily count &lt; cap,
-  start &gt;= Now + min_booking_lead_hours.
+                    <InvokeWorkflowFile DisplayName="Allocate best slot"
+                      sap2010:WorkflowViewState.IdRef="Invoke_Alloc"
+                      WorkflowFileName="Workflows\AllocateSlot.xaml">
+                      <InvokeWorkflowFile.Arguments>
+                        <InArgument x:TypeArguments="jl:JArray" x:Key="in_Slots">[Slots]</InArgument>
+                        <InArgument x:TypeArguments="scg:List(x:Int32)" x:Key="in_ExcludedSlotIds">[ExcludedSlots]</InArgument>
+                        <InArgument x:TypeArguments="x:String" x:Key="in_Priority">[Priority]</InArgument>
+                        <InArgument x:TypeArguments="x:Int32" x:Key="in_PreferredDoctorId">[PreferredDoctorId]</InArgument>
+                        <InArgument x:TypeArguments="x:String" x:Key="in_TimeBand">[TimeBand]</InArgument>
+                        <OutArgument x:TypeArguments="jl:JObject" x:Key="out_SelectedSlot">[SelectedSlot]</OutArgument>
+                        <OutArgument x:TypeArguments="x:Int32" x:Key="out_SelectedSlotId">[SelectedSlotId]</OutArgument>
+                        <OutArgument x:TypeArguments="x:Int32" x:Key="out_SelectedSlotVersion">[SelectedSlotVersion]</OutArgument>
+                        <OutArgument x:TypeArguments="x:Int32" x:Key="out_AllocationPass">[AllocationPass]</OutArgument>
+                      </InvokeWorkflowFile.Arguments>
+                    </InvokeWorkflowFile>
 
-FOUR PASSES, in order — the first that yields a candidate wins:
-  1. Preferred doctor + preferred time band
-  2. Preferred doctor, any time
-  3. Any doctor in department + preferred time band
-  4. Any doctor, any time (first-fit fallback)
+                    <If Condition="[SelectedSlotId = 0]" sap2010:WorkflowViewState.IdRef="If_NoAlloc">
+                      <If.Then>
+                        <Throw
+                          Exception="[New UiPath.Core.BusinessRuleException(&quot;NO_SLOT_AVAILABLE: allocation returned no candidate&quot;)]"
+                          sap2010:WorkflowViewState.IdRef="Throw_NoAlloc" />
+                      </If.Then>
+                    </If>
 
-SCORING WITHIN A PASS (weights from dtRules):
-  weight_earliest        * (horizon - daysOut)
-  weight_urgency_boost   * (horizon - daysOut)   if Priority = URGENT
-  weight_time_band_match if the band matches
-  weight_preferred_doctor if the doctor matches
-  weight_load_balance    * (1 - doctorLoad)
-  weight_contiguity      if adjacent to an existing booking
+                    <TryCatch DisplayName="Lock, recheck, book" sap2010:WorkflowViewState.IdRef="Try_Book">
+                      <TryCatch.Try>
+                        <Sequence sap2010:WorkflowViewState.IdRef="Seq_LockBook">
 
-  Order by Score DESC, Date ASC, StartTime ASC, SlotId ASC.
-  The final SlotId tie-break is what makes two runs over the same data pick
-  the same slot — without it the Phase 4 tests are not reproducible.
+                          <InvokeWorkflowFile DisplayName="Lock slot"
+                            sap2010:WorkflowViewState.IdRef="Invoke_Lock"
+                            WorkflowFileName="..\..\shared\HMS_Client.xaml">
+                            <InvokeWorkflowFile.Arguments>
+                              <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+                              <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+                              <InArgument x:TypeArguments="x:String" x:Key="in_Method">["POST"]</InArgument>
+                              <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/slots/" &amp; SelectedSlotId.ToString() &amp; "/lock"]</InArgument>
+                              <InArgument x:TypeArguments="x:String" x:Key="in_Body">[&quot;{&quot;&quot;locked_by&quot;&quot;:&quot;&quot;SchedulingBot&quot;&quot;}&quot;]</InArgument>
+                              <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[2]</InArgument>
+                              <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+                              <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+                              <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+                              <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+                            </InvokeWorkflowFile.Arguments>
+                          </InvokeWorkflowFile>
 
-No candidate in any pass -> BusinessRuleException("NO_SLOT_AVAILABLE").</sap2010:Annotation.AnnotationText>
-                <ui:Comment Text="TODO(Studio): Invoke AllocateSlot.xaml -> SelectedSlotId, AllocationPass"
-                  sap2010:WorkflowViewState.IdRef="Comment_7" />
-              </Sequence>
+                          <If DisplayName="Lock failed?"
+                            Condition="[StatusCode &lt; 200 OrElse StatusCode &gt;= 300]"
+                            sap2010:WorkflowViewState.IdRef="If_LockFail">
+                            <If.Then>
+                              <Sequence sap2010:WorkflowViewState.IdRef="Seq_LockFail">
+                                <ui:LogMessage Level="Warn"
+                                  Message="[&quot;Lock failed slot=&quot; &amp; SelectedSlotId.ToString() &amp; &quot; err=&quot; &amp; ErrorCode]"
+                                  sap2010:WorkflowViewState.IdRef="Log_LockFail" />
+                                <InvokeMethod TargetObject="[ExcludedSlots]" MethodName="Add"
+                                  sap2010:WorkflowViewState.IdRef="Add_Excl_Lock">
+                                  <InvokeMethod.Parameters>
+                                    <InArgument x:TypeArguments="x:Int32">[SelectedSlotId]</InArgument>
+                                  </InvokeMethod.Parameters>
+                                </InvokeMethod>
+                              </Sequence>
+                            </If.Then>
+                            <If.Else>
+                              <Sequence DisplayName="Recheck and book" sap2010:WorkflowViewState.IdRef="Seq_ReBook">
+                                <!-- Book -->
+                                <InvokeWorkflowFile DisplayName="POST appointment"
+                                  sap2010:WorkflowViewState.IdRef="Invoke_Book"
+                                  WorkflowFileName="..\..\shared\HMS_Client.xaml">
+                                  <InvokeWorkflowFile.Arguments>
+                                    <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+                                    <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+                                    <InArgument x:TypeArguments="x:String" x:Key="in_Method">["POST"]</InArgument>
+                                    <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/appointments"]</InArgument>
+                                    <InArgument x:TypeArguments="x:String" x:Key="in_Body">[New Newtonsoft.Json.Linq.JObject(New Newtonsoft.Json.Linq.JProperty("patient_id", PatientId), New Newtonsoft.Json.Linq.JProperty("slot_id", SelectedSlotId), New Newtonsoft.Json.Linq.JProperty("priority", Priority), New Newtonsoft.Json.Linq.JProperty("reason", Reason), New Newtonsoft.Json.Linq.JProperty("is_follow_up", IsFollowUp), New Newtonsoft.Json.Linq.JProperty("queue_item_ref", RequestRef), New Newtonsoft.Json.Linq.JProperty("expected_version", SelectedSlotVersion), New Newtonsoft.Json.Linq.JProperty("booked_by", "SchedulingBot")).ToString()]</InArgument>
+                                    <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[2]</InArgument>
+                                    <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+                                    <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+                                    <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+                                    <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+                                  </InvokeWorkflowFile.Arguments>
+                                </InvokeWorkflowFile>
 
-              <TryCatch DisplayName="Step 6 - Lock, re-check and book" sap2010:WorkflowViewState.IdRef="TryCatch_2">
-                <sap2010:Annotation.AnnotationText>THE CRITICAL SECTION. Guards 1 and 2 live here; guard 3 is the HMS index.
-
-  a. POST /api/v1/slots/{SelectedSlotId}/lock   body {"locked_by":"SchedulingBot"}
-       error SLOT_LOCKED  -> retry with the next-best slot
-  b. GET  /api/v1/slots/{SelectedSlotId}
-       status &lt;&gt; AVAILABLE OR version &lt;&gt; SelectedSlotVersion
-                          -> retry with the next-best slot
-  c. Navigate /admin/book, fill book-patient-id, book-slot-id, book-priority,
-     book-reason, book-is-followup, book-queue-ref; click book-submit
-  d. If [data-automation-id='book-success'] exists:
-         scrape book-reference-no -> ReferenceNo
-     Else:
-         scrape book-error-code -> ErrorCode
-
-  Retryable error codes: SLOT_TAKEN, SLOT_LOCKED  (max 3 attempts, then
-  BusinessRuleException "SLOT_CONTENTION")
-  Non-retryable: VALIDATION_ERROR, DAILY_CAP_REACHED, DOCTOR_INACTIVE,
-  PATIENT_NOT_FOUND, SLOT_BLOCKED</sap2010:Annotation.AnnotationText>
-                <TryCatch.Try>
-                  <Sequence DisplayName="Lock - recheck - submit" sap2010:WorkflowViewState.IdRef="Sequence_11">
-                    <ui:Comment Text="TODO(Studio): lock slot, re-check version, fill and submit the booking form"
-                      sap2010:WorkflowViewState.IdRef="Comment_8" />
+                                <If Condition="[StatusCode &gt;= 200 AndAlso StatusCode &lt; 300]"
+                                  sap2010:WorkflowViewState.IdRef="If_BookOk">
+                                  <If.Then>
+                                    <Sequence sap2010:WorkflowViewState.IdRef="Seq_BookOk">
+                                      <Assign sap2010:WorkflowViewState.IdRef="Assign_ApptObj">
+                                        <Assign.To><OutArgument x:TypeArguments="jl:JObject">[J]</OutArgument></Assign.To>
+                                        <Assign.Value><InArgument x:TypeArguments="jl:JObject">[Newtonsoft.Json.Linq.JObject.Parse(ResponseJson)]</InArgument></Assign.Value>
+                                      </Assign>
+                                      <Assign sap2010:WorkflowViewState.IdRef="Assign_ApptId">
+                                        <Assign.To><OutArgument x:TypeArguments="x:Int32">[AppointmentId]</OutArgument></Assign.To>
+                                        <Assign.Value><InArgument x:TypeArguments="x:Int32">[Integer.Parse(J("appointment_id").ToString())]</InArgument></Assign.Value>
+                                      </Assign>
+                                      <Assign sap2010:WorkflowViewState.IdRef="Assign_ApptRef">
+                                        <Assign.To><OutArgument x:TypeArguments="x:String">[AppointmentRef]</OutArgument></Assign.To>
+                                        <Assign.Value><InArgument x:TypeArguments="x:String">[J("reference_no").ToString()]</InArgument></Assign.Value>
+                                      </Assign>
+                                      <Assign sap2010:WorkflowViewState.IdRef="Assign_ApptDt">
+                                        <Assign.To><OutArgument x:TypeArguments="x:String">[AppointmentDateTime]</OutArgument></Assign.To>
+                                        <Assign.Value><InArgument x:TypeArguments="x:String">[J("appointment_datetime").ToString()]</InArgument></Assign.Value>
+                                      </Assign>
+                                      <Assign sap2010:WorkflowViewState.IdRef="Assign_ApptDoc">
+                                        <Assign.To><OutArgument x:TypeArguments="x:String">[DoctorName]</OutArgument></Assign.To>
+                                        <Assign.Value><InArgument x:TypeArguments="x:String">[J("doctor_name").ToString()]</InArgument></Assign.Value>
+                                      </Assign>
+                                      <Assign sap2010:WorkflowViewState.IdRef="Assign_BookedTrue">
+                                        <Assign.To><OutArgument x:TypeArguments="x:Boolean">[Booked]</OutArgument></Assign.To>
+                                        <Assign.Value><InArgument x:TypeArguments="x:Boolean">[True]</InArgument></Assign.Value>
+                                      </Assign>
+                                    </Sequence>
+                                  </If.Then>
+                                  <If.Else>
+                                    <Sequence sap2010:WorkflowViewState.IdRef="Seq_BookFail">
+                                      <ui:LogMessage Level="Warn"
+                                        Message="[&quot;Book failed slot=&quot; &amp; SelectedSlotId.ToString() &amp; &quot; err=&quot; &amp; ErrorCode]"
+                                        sap2010:WorkflowViewState.IdRef="Log_BookFail" />
+                                      <If Condition="[ErrorCode = &quot;SLOT_TAKEN&quot; OrElse ErrorCode = &quot;SLOT_LOCKED&quot;]"
+                                        sap2010:WorkflowViewState.IdRef="If_SlotContended">
+                                        <If.Then>
+                                          <InvokeMethod TargetObject="[ExcludedSlots]" MethodName="Add"
+                                            sap2010:WorkflowViewState.IdRef="Add_Excl_Book">
+                                            <InvokeMethod.Parameters>
+                                              <InArgument x:TypeArguments="x:Int32">[SelectedSlotId]</InArgument>
+                                            </InvokeMethod.Parameters>
+                                          </InvokeMethod>
+                                        </If.Then>
+                                        <If.Else>
+                                          <Throw
+                                            Exception="[New UiPath.Core.BusinessRuleException(&quot;BOOK_FAILED: &quot; &amp; ErrorCode)]"
+                                            sap2010:WorkflowViewState.IdRef="Throw_Book" />
+                                        </If.Else>
+                                      </If>
+                                    </Sequence>
+                                  </If.Else>
+                                </If>
+                              </Sequence>
+                            </If.Else>
+                          </If>
+                        </Sequence>
+                      </TryCatch.Try>
+                      <TryCatch.Finally>
+                        <Sequence DisplayName="Release lock (always)" sap2010:WorkflowViewState.IdRef="Seq_Release">
+                          <InvokeWorkflowFile DisplayName="POST release"
+                            sap2010:WorkflowViewState.IdRef="Invoke_Release"
+                            WorkflowFileName="..\..\shared\HMS_Client.xaml">
+                            <InvokeWorkflowFile.Arguments>
+                              <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+                              <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+                              <InArgument x:TypeArguments="x:String" x:Key="in_Method">["POST"]</InArgument>
+                              <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/slots/" &amp; SelectedSlotId.ToString() &amp; "/release"]</InArgument>
+                              <InArgument x:TypeArguments="x:String" x:Key="in_Body">[&quot;{&quot;&quot;locked_by&quot;&quot;:&quot;&quot;SchedulingBot&quot;&quot;}&quot;]</InArgument>
+                              <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[1]</InArgument>
+                              <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+                              <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+                              <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+                              <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+                            </InvokeWorkflowFile.Arguments>
+                          </InvokeWorkflowFile>
+                        </Sequence>
+                      </TryCatch.Finally>
+                    </TryCatch>
                   </Sequence>
-                </TryCatch.Try>
-                <TryCatch.Finally>
-                  <Sequence DisplayName="Always release the lock" sap2010:WorkflowViewState.IdRef="Sequence_12">
-                    <sap2010:Annotation.AnnotationText>MANDATORY. POST /api/v1/slots/{SelectedSlotId}/release
+                </While>
 
-Runs whether the booking succeeded, failed or threw. A crashed transaction
-that keeps its lock makes the next 120 seconds of bookings silently worse.</sap2010:Annotation.AnnotationText>
-                    <ui:Comment Text="TODO(Studio): POST /api/v1/slots/{SelectedSlotId}/release"
-                      sap2010:WorkflowViewState.IdRef="Comment_9" />
-                  </Sequence>
-                </TryCatch.Finally>
-              </TryCatch>
-
-              <Sequence DisplayName="Step 7 - Mirror to Excel" sap2010:WorkflowViewState.IdRef="Sequence_13">
-                <sap2010:Annotation.AnnotationText>Workflows/MirrorToExcel.xaml
-
-Append one row to Config("Excel_FilePath"), sheet "Appointments":
-  ReferenceNo, PatientMRN, PatientName, Phone, Department, DoctorName,
-  AppointmentDate, AppointmentTime, Status, Priority, BookedBy, SyncedAt
-
-Then PATCH /api/v1/appointments/{id} {"synced_to_excel_at": true}.
-
-Part of the same transaction as the booking, which is how the duplicate
-data entry from the manual process stops being a separate human task.
-EXCEL_FILE_LOCKED is a SYSTEM exception — a human has the file open.</sap2010:Annotation.AnnotationText>
-                <ui:Comment Text="TODO(Studio): Invoke MirrorToExcel.xaml"
-                  sap2010:WorkflowViewState.IdRef="Comment_10" />
+                <If Condition="[Not Booked]" sap2010:WorkflowViewState.IdRef="If_NotBooked">
+                  <If.Then>
+                    <Throw
+                      Exception="[New UiPath.Core.BusinessRuleException(&quot;SLOT_CONTENTION: could not book after &quot; &amp; AttemptsUsed.ToString() &amp; &quot; attempts&quot;)]"
+                      sap2010:WorkflowViewState.IdRef="Throw_NotBooked" />
+                  </If.Then>
+                </If>
               </Sequence>
 
-              <Sequence DisplayName="Step 8 - Send confirmation" sap2010:WorkflowViewState.IdRef="Sequence_14">
-                <sap2010:Annotation.AnnotationText>Workflows/SendConfirmation.xaml -> shared/SendSMS.xaml or SendEmail.xaml
-
-Channel per rules.yaml reminders.channel and the patient's consent flags.
-Template TPL_CONFIRMATION_EN. Then POST /api/v1/notifications to log it.
-
-If Config("DryRunNotifications") is True, log the message and record the
-notification with provider = DRYRUN instead of sending. Phase 4 batch tests
-run this way so they do not burn the Twilio trial credit.
-
-A failed confirmation does NOT fail the transaction: the appointment is
-booked, and that is the outcome that matters. Log it and continue.</sap2010:Annotation.AnnotationText>
-                <ui:Comment Text="TODO(Studio): Invoke SendConfirmation.xaml"
-                  sap2010:WorkflowViewState.IdRef="Comment_11" />
+              <!-- Mirror to Excel -->
+              <Sequence DisplayName="Step 6 - Mirror to Excel" sap2010:WorkflowViewState.IdRef="Seq_Excel">
+                <TryCatch sap2010:WorkflowViewState.IdRef="Try_Excel">
+                  <TryCatch.Try>
+                    <Sequence sap2010:WorkflowViewState.IdRef="Seq_ExcelBody">
+                      <ui:ExcelApplicationCard DisplayName="Excel scope"
+                        sap2010:WorkflowViewState.IdRef="Excel_Scope"
+                        FilePath="[in_ExcelPath]"
+                        Visible="False">
+                        <ui:ExcelApplicationCard.Body>
+                          <ActivityAction x:TypeArguments="ui:WorkbookApplication">
+                            <ActivityAction.Argument>
+                              <DelegateInArgument x:TypeArguments="ui:WorkbookApplication" Name="Workbook" />
+                            </ActivityAction.Argument>
+                            <Sequence sap2010:WorkflowViewState.IdRef="Seq_ExcelInner">
+                              <ui:ExcelAppendRange DisplayName="Append row"
+                                sap2010:WorkflowViewState.IdRef="Excel_Append"
+                                SheetName="Appointments">
+                                <ui:ExcelAppendRange.DataTable>
+                                  <InArgument x:TypeArguments="sd:DataTable">[BuildExcelRowTable(AppointmentRef, PatientName, Phone, Department, DoctorName, AppointmentDateTime, Priority)]</InArgument>
+                                </ui:ExcelAppendRange.DataTable>
+                              </ui:ExcelAppendRange>
+                            </Sequence>
+                          </ActivityAction>
+                        </ui:ExcelApplicationCard.Body>
+                      </ui:ExcelApplicationCard>
+                      <InvokeWorkflowFile DisplayName="PATCH synced_to_excel_at"
+                        sap2010:WorkflowViewState.IdRef="Invoke_Synced"
+                        WorkflowFileName="..\..\shared\HMS_Client.xaml">
+                        <InvokeWorkflowFile.Arguments>
+                          <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+                          <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+                          <InArgument x:TypeArguments="x:String" x:Key="in_Method">["PATCH"]</InArgument>
+                          <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/appointments/" &amp; AppointmentId.ToString()]</InArgument>
+                          <InArgument x:TypeArguments="x:String" x:Key="in_Body">[&quot;{&quot;&quot;synced_to_excel_at&quot;&quot;:true}&quot;]</InArgument>
+                          <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[2]</InArgument>
+                          <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+                          <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+                          <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+                          <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+                        </InvokeWorkflowFile.Arguments>
+                      </InvokeWorkflowFile>
+                    </Sequence>
+                  </TryCatch.Try>
+                  <TryCatch.Catches>
+                    <Catch x:TypeArguments="s:Exception" sap2010:WorkflowViewState.IdRef="Catch_Excel">
+                      <ActivityAction x:TypeArguments="s:Exception">
+                        <ActivityAction.Argument><DelegateInArgument x:TypeArguments="s:Exception" Name="ex" /></ActivityAction.Argument>
+                        <ui:LogMessage Level="Warn"
+                          Message="[&quot;Excel mirror failed (non-fatal): &quot; &amp; ex.Message]"
+                          sap2010:WorkflowViewState.IdRef="Log_ExcelFail" />
+                      </ActivityAction>
+                    </Catch>
+                  </TryCatch.Catches>
+                </TryCatch>
               </Sequence>
+
+              <!-- Send confirmation -->
+              <Sequence DisplayName="Step 7 - Confirmation" sap2010:WorkflowViewState.IdRef="Seq_Conf">
+                <Assign sap2010:WorkflowViewState.IdRef="Assign_ConfChan">
+                  <Assign.To><OutArgument x:TypeArguments="x:String">[NotificationChannel]</OutArgument></Assign.To>
+                  <Assign.Value><InArgument x:TypeArguments="x:String">[If(PatientChannel = "SMS" AndAlso SmsConsent, "SMS", If(PatientChannel = "EMAIL" AndAlso EmailConsent AndAlso Not String.IsNullOrEmpty(Email), "EMAIL", If(SmsConsent, "SMS", If(EmailConsent AndAlso Not String.IsNullOrEmpty(Email), "EMAIL", "NONE"))))]</InArgument></Assign.Value>
+                </Assign>
+                <Assign sap2010:WorkflowViewState.IdRef="Assign_MsgBody">
+                  <Assign.To><OutArgument x:TypeArguments="x:String">[MsgBody]</OutArgument></Assign.To>
+                  <Assign.Value><InArgument x:TypeArguments="x:String">[in_HospitalName &amp; ": appointment " &amp; AppointmentRef &amp; " with " &amp; DoctorName &amp; " on " &amp; AppointmentDateTime.Replace("T", " ") &amp; ". Reply STOP to unsubscribe."]</InArgument></Assign.Value>
+                </Assign>
+
+                <TryCatch sap2010:WorkflowViewState.IdRef="Try_Notif">
+                  <TryCatch.Try>
+                    <Sequence sap2010:WorkflowViewState.IdRef="Seq_NotifSend">
+                      <If Condition="[NotificationChannel = &quot;SMS&quot;]" sap2010:WorkflowViewState.IdRef="If_ChSMS">
+                        <If.Then>
+                          <InvokeWorkflowFile DisplayName="Send SMS"
+                            sap2010:WorkflowViewState.IdRef="Invoke_SMS"
+                            WorkflowFileName="..\..\shared\SendSMS.xaml">
+                            <InvokeWorkflowFile.Arguments>
+                              <InArgument x:TypeArguments="x:String" x:Key="in_To">[Phone]</InArgument>
+                              <InArgument x:TypeArguments="x:String" x:Key="in_Body">[MsgBody]</InArgument>
+                              <InArgument x:TypeArguments="x:String" x:Key="in_AccountSid">[in_TwilioSid]</InArgument>
+                              <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_AuthToken">[in_TwilioAuth]</InArgument>
+                              <InArgument x:TypeArguments="x:String" x:Key="in_FromNumber">[in_TwilioFrom]</InArgument>
+                              <InArgument x:TypeArguments="x:Boolean" x:Key="in_DryRun">[in_DryRunNotifications]</InArgument>
+                              <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Success">[NotifOk]</OutArgument>
+                              <OutArgument x:TypeArguments="x:String" x:Key="out_MessageId">[NotifMessageId]</OutArgument>
+                              <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[NotifError]</OutArgument>
+                              <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[NotifRetryable]</OutArgument>
+                            </InvokeWorkflowFile.Arguments>
+                          </InvokeWorkflowFile>
+                        </If.Then>
+                        <If.Else>
+                          <If Condition="[NotificationChannel = &quot;EMAIL&quot;]" sap2010:WorkflowViewState.IdRef="If_ChEmail">
+                            <If.Then>
+                              <InvokeWorkflowFile DisplayName="Send Email"
+                                sap2010:WorkflowViewState.IdRef="Invoke_Email"
+                                WorkflowFileName="..\..\shared\SendEmail.xaml">
+                                <InvokeWorkflowFile.Arguments>
+                                  <InArgument x:TypeArguments="x:String" x:Key="in_To">[Email]</InArgument>
+                                  <InArgument x:TypeArguments="x:String" x:Key="in_Subject">[in_HospitalName &amp; " appointment confirmation " &amp; AppointmentRef]</InArgument>
+                                  <InArgument x:TypeArguments="x:String" x:Key="in_HtmlBody">["&lt;p&gt;" &amp; MsgBody &amp; "&lt;/p&gt;"]</InArgument>
+                                  <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_SendGridKey]</InArgument>
+                                  <InArgument x:TypeArguments="x:String" x:Key="in_FromEmail">[in_SendGridFrom]</InArgument>
+                                  <InArgument x:TypeArguments="x:Boolean" x:Key="in_DryRun">[in_DryRunNotifications]</InArgument>
+                                  <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Success">[NotifOk]</OutArgument>
+                                  <OutArgument x:TypeArguments="x:String" x:Key="out_MessageId">[NotifMessageId]</OutArgument>
+                                  <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[NotifError]</OutArgument>
+                                  <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[NotifRetryable]</OutArgument>
+                                </InvokeWorkflowFile.Arguments>
+                              </InvokeWorkflowFile>
+                            </If.Then>
+                          </If>
+                        </If.Else>
+                      </If>
+
+                      <If Condition="[NotificationChannel &lt;&gt; &quot;NONE&quot; AndAlso NotifOk]"
+                        sap2010:WorkflowViewState.IdRef="If_LogNotif">
+                        <If.Then>
+                          <InvokeWorkflowFile DisplayName="POST notifications"
+                            sap2010:WorkflowViewState.IdRef="Invoke_LogNotif"
+                            WorkflowFileName="..\..\shared\HMS_Client.xaml">
+                            <InvokeWorkflowFile.Arguments>
+                              <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+                              <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+                              <InArgument x:TypeArguments="x:String" x:Key="in_Method">["POST"]</InArgument>
+                              <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/notifications"]</InArgument>
+                              <InArgument x:TypeArguments="x:String" x:Key="in_Body">[New Newtonsoft.Json.Linq.JObject(New Newtonsoft.Json.Linq.JProperty("appointment_id", AppointmentId), New Newtonsoft.Json.Linq.JProperty("type", "CONFIRMATION"), New Newtonsoft.Json.Linq.JProperty("channel", NotificationChannel), New Newtonsoft.Json.Linq.JProperty("recipient", If(NotificationChannel = "SMS", Phone, Email)), New Newtonsoft.Json.Linq.JProperty("template_id", "TPL_CONFIRMATION_EN"), New Newtonsoft.Json.Linq.JProperty("status", "SENT"), New Newtonsoft.Json.Linq.JProperty("provider", If(in_DryRunNotifications, "DRYRUN", If(NotificationChannel = "SMS", "TWILIO", "SENDGRID"))), New Newtonsoft.Json.Linq.JProperty("provider_message_id", NotifMessageId), New Newtonsoft.Json.Linq.JProperty("body_preview", MsgBody.Substring(0, Math.Min(200, MsgBody.Length)))).ToString()]</InArgument>
+                              <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[2]</InArgument>
+                              <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+                              <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+                              <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+                              <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+                            </InvokeWorkflowFile.Arguments>
+                          </InvokeWorkflowFile>
+                        </If.Then>
+                      </If>
+                    </Sequence>
+                  </TryCatch.Try>
+                  <TryCatch.Catches>
+                    <Catch x:TypeArguments="s:Exception" sap2010:WorkflowViewState.IdRef="Catch_Notif">
+                      <ActivityAction x:TypeArguments="s:Exception">
+                        <ActivityAction.Argument><DelegateInArgument x:TypeArguments="s:Exception" Name="ex" /></ActivityAction.Argument>
+                        <ui:LogMessage Level="Warn"
+                          Message="[&quot;Confirmation failed (non-fatal): &quot; &amp; ex.Message]"
+                          sap2010:WorkflowViewState.IdRef="Log_NotifFail" />
+                      </ActivityAction>
+                    </Catch>
+                  </TryCatch.Catches>
+                </TryCatch>
+              </Sequence>
+
+              <!-- Mark PROCESSED -->
+              <InvokeWorkflowFile DisplayName="PATCH booking-request PROCESSED"
+                sap2010:WorkflowViewState.IdRef="Invoke_MarkOk"
+                WorkflowFileName="..\..\shared\HMS_Client.xaml">
+                <InvokeWorkflowFile.Arguments>
+                  <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+                  <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+                  <InArgument x:TypeArguments="x:String" x:Key="in_Method">["PATCH"]</InArgument>
+                  <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/booking-requests/" &amp; RequestRef]</InArgument>
+                  <InArgument x:TypeArguments="x:String" x:Key="in_Body">[&quot;{&quot;&quot;queue_status&quot;&quot;:&quot;&quot;PROCESSED&quot;&quot;}&quot;]</InArgument>
+                  <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[2]</InArgument>
+                  <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+                  <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+                  <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+                  <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+                </InvokeWorkflowFile.Arguments>
+              </InvokeWorkflowFile>
+
+              <Assign DisplayName="Increment processed" sap2010:WorkflowViewState.IdRef="Assign_IncOk">
+                <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Processed]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Processed + 1]</InArgument></Assign.Value>
+              </Assign>
+
+              <ui:LogMessage DisplayName="Log tx success" Level="Info"
+                Message="[&quot;Booked &quot; &amp; AppointmentRef &amp; &quot; on &quot; &amp; AppointmentDateTime &amp; &quot; with &quot; &amp; DoctorName &amp; &quot; (pass &quot; &amp; AllocationPass.ToString() &amp; &quot;)&quot;]"
+                sap2010:WorkflowViewState.IdRef="Log_TxOk" />
 
             </Sequence>
           </TryCatch.Try>
           <TryCatch.Catches>
-            <Catch x:TypeArguments="ui:BusinessRuleException"
-              sap2010:WorkflowViewState.IdRef="Catch_1">
+            <Catch x:TypeArguments="ui:BusinessRuleException" sap2010:WorkflowViewState.IdRef="Catch_Biz">
               <ActivityAction x:TypeArguments="ui:BusinessRuleException">
-                <ActivityAction.Argument>
-                  <DelegateInArgument x:TypeArguments="ui:BusinessRuleException" Name="bex" />
-                </ActivityAction.Argument>
-                <Sequence DisplayName="Business exception" sap2010:WorkflowViewState.IdRef="Sequence_15">
-                  <sap2010:Annotation.AnnotationText>BUSINESS EXCEPTION — the process said no. NEVER retried.
-
-Set Transaction Status = Failed, ErrorType = Business, with the reason code.
-Orchestrator will not re-queue it; it goes to the exception queue for a clerk.</sap2010:Annotation.AnnotationText>
-                  <ui:LogMessage DisplayName="Log business exception" Level="Warn"
-                    Message="[&quot;Business exception: &quot; &amp; bex.Message]"
-                    sap2010:WorkflowViewState.IdRef="LogMessage_2" />
+                <ActivityAction.Argument><DelegateInArgument x:TypeArguments="ui:BusinessRuleException" Name="bex" /></ActivityAction.Argument>
+                <Sequence sap2010:WorkflowViewState.IdRef="Seq_BizFail">
+                  <Assign sap2010:WorkflowViewState.IdRef="Assign_FailReason">
+                    <Assign.To><OutArgument x:TypeArguments="x:String">[FailureReason]</OutArgument></Assign.To>
+                    <Assign.Value><InArgument x:TypeArguments="x:String">[bex.Message]</InArgument></Assign.Value>
+                  </Assign>
+                  <ui:LogMessage Level="Warn"
+                    Message="[&quot;Business exception ref=&quot; &amp; RequestRef &amp; &quot;: &quot; &amp; FailureReason]"
+                    sap2010:WorkflowViewState.IdRef="Log_Biz" />
+                  <InvokeWorkflowFile DisplayName="PATCH booking-request FAILED"
+                    sap2010:WorkflowViewState.IdRef="Invoke_MarkFail"
+                    WorkflowFileName="..\..\shared\HMS_Client.xaml">
+                    <InvokeWorkflowFile.Arguments>
+                      <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+                      <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+                      <InArgument x:TypeArguments="x:String" x:Key="in_Method">["PATCH"]</InArgument>
+                      <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/booking-requests/" &amp; RequestRef]</InArgument>
+                      <InArgument x:TypeArguments="x:String" x:Key="in_Body">[New Newtonsoft.Json.Linq.JObject(New Newtonsoft.Json.Linq.JProperty("queue_status", "FAILED"), New Newtonsoft.Json.Linq.JProperty("push_error", FailureReason)).ToString()]</InArgument>
+                      <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[2]</InArgument>
+                      <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+                      <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+                      <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+                      <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+                    </InvokeWorkflowFile.Arguments>
+                  </InvokeWorkflowFile>
+                  <Assign sap2010:WorkflowViewState.IdRef="Assign_IncFail">
+                    <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Failed]</OutArgument></Assign.To>
+                    <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Failed + 1]</InArgument></Assign.Value>
+                  </Assign>
                 </Sequence>
               </ActivityAction>
             </Catch>
-            <Catch x:TypeArguments="s:Exception" xmlns:s="clr-namespace:System;assembly=System.Private.CoreLib"
-              sap2010:WorkflowViewState.IdRef="Catch_2">
-              <ActivityAction x:TypeArguments="s:Exception" xmlns:s="clr-namespace:System;assembly=System.Private.CoreLib">
-                <ActivityAction.Argument>
-                  <DelegateInArgument x:TypeArguments="s:Exception" Name="ex"
-                    xmlns:s="clr-namespace:System;assembly=System.Private.CoreLib" />
-                </ActivityAction.Argument>
-                <Sequence DisplayName="System exception" sap2010:WorkflowViewState.IdRef="Sequence_16">
-                  <sap2010:Annotation.AnnotationText>SYSTEM EXCEPTION — the environment failed. Orchestrator retries it.
-
-Take a screenshot, close and reopen the browser, set Transaction Status =
-Failed with ErrorType = Application so the item is re-queued.
-
-Getting this split backwards is the classic REFramework mistake: a business
-failure retried three times wastes capacity and still fails, and a system
-failure not retried loses work that would have succeeded on the second try.</sap2010:Annotation.AnnotationText>
-                  <ui:LogMessage DisplayName="Log system exception" Level="Error"
-                    Message="[&quot;System exception: &quot; &amp; ex.Message]"
-                    sap2010:WorkflowViewState.IdRef="LogMessage_3" />
+            <Catch x:TypeArguments="s:Exception" sap2010:WorkflowViewState.IdRef="Catch_Sys">
+              <ActivityAction x:TypeArguments="s:Exception">
+                <ActivityAction.Argument><DelegateInArgument x:TypeArguments="s:Exception" Name="ex" /></ActivityAction.Argument>
+                <Sequence sap2010:WorkflowViewState.IdRef="Seq_SysFail">
+                  <ui:LogMessage Level="Error"
+                    Message="[&quot;System exception ref=&quot; &amp; RequestRef &amp; &quot;: &quot; &amp; ex.Message]"
+                    sap2010:WorkflowViewState.IdRef="Log_Sys" />
+                  <Rethrow sap2010:WorkflowViewState.IdRef="Rethrow_Sys" />
                 </Sequence>
               </ActivityAction>
             </Catch>
           </TryCatch.Catches>
         </TryCatch>
 
-        <Sequence DisplayName="2c. Set transaction status" sap2010:WorkflowViewState.IdRef="Sequence_17">
-          <sap2010:Annotation.AnnotationText>Set Transaction Status.
-
-On success, attach output data so the run is auditable afterwards:
-  AppointmentId, ReferenceNo, SlotId, DoctorId, DoctorName,
-  AppointmentDateTime, AllocationPass, AttemptsUsed,
-  NotificationChannel, ExcelSynced
-
-AllocationPass and AttemptsUsed are logged deliberately — they are what tell
-the Phase 4 report how often a patient got their preferred doctor rather
-than a fallback.</sap2010:Annotation.AnnotationText>
-          <ui:Comment Text="TODO(Studio): Set Transaction Status with output data"
-            sap2010:WorkflowViewState.IdRef="Comment_12" />
-        </Sequence>
-
-        <Assign DisplayName="Increment counter" sap2010:WorkflowViewState.IdRef="Assign_1">
-          <Assign.To>
-            <OutArgument x:TypeArguments="x:Int32">[TransactionNumber]</OutArgument>
-          </Assign.To>
-          <Assign.Value>
-            <InArgument x:TypeArguments="x:Int32">[TransactionNumber + 1]</InArgument>
-          </Assign.Value>
+        <Assign DisplayName="Advance index" sap2010:WorkflowViewState.IdRef="Assign_NextIdx">
+          <Assign.To><OutArgument x:TypeArguments="x:Int32">[Idx]</OutArgument></Assign.To>
+          <Assign.Value><InArgument x:TypeArguments="x:Int32">[Idx + 1]</InArgument></Assign.Value>
         </Assign>
       </Sequence>
     </While>
 
-    <Sequence DisplayName="3. Close applications" sap2010:WorkflowViewState.IdRef="Sequence_18">
-      <sap2010:Annotation.AnnotationText>Workflows/CloseAllApplications.xaml — close the browser, release any held
-locks, write the run summary to the Orchestrator log.</sap2010:Annotation.AnnotationText>
-      <ui:LogMessage DisplayName="Log - Finished" Level="Info"
-        Message="[&quot;SchedulingBot finished. Processed: &quot; &amp; TransactionNumber.ToString()]"
-        sap2010:WorkflowViewState.IdRef="LogMessage_4" />
-    </Sequence>
+    <ui:LogMessage DisplayName="Log finished" Level="Info"
+      Message="[&quot;SchedulingBot finished. Processed=&quot; &amp; out_Processed.ToString() &amp; &quot; Failed=&quot; &amp; out_Failed.ToString()]"
+      sap2010:WorkflowViewState.IdRef="Log_End" />
   </Sequence>
 </Activity>
