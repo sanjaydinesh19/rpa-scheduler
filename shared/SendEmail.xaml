@@ -7,8 +7,6 @@
  xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib"
  xmlns:sd="clr-namespace:System.Data;assembly=System.Data.Common"
  xmlns:ui="http://schemas.uipath.com/workflow/activities"
- xmlns:uwa="clr-namespace:UiPath.Web.Activities;assembly=UiPath.Web.Activities"
- xmlns:jl="clr-namespace:Newtonsoft.Json.Linq;assembly=Newtonsoft.Json"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <x:Members>
     <x:Property Name="in_To" Type="InArgument(x:String)" />
@@ -29,6 +27,7 @@
       <x:String>System.Collections.Generic</x:String>
       <x:String>System.Data</x:String>
       <x:String>System.Linq</x:String>
+      <x:String>System.Net.Http</x:String>
       <x:String>System.Text.RegularExpressions</x:String>
       <x:String>UiPath.Core</x:String>
       <x:String>UiPath.Core.Activities</x:String>
@@ -38,164 +37,90 @@
   <TextExpression.ReferencesForImplementation>
     <scg:List x:TypeArguments="AssemblyReference" Capacity="8">
       <AssemblyReference>System.Linq</AssemblyReference>
+      <AssemblyReference>System.Net.Http</AssemblyReference>
       <AssemblyReference>System.Text.RegularExpressions</AssemblyReference>
       <AssemblyReference>UiPath.System.Activities</AssemblyReference>
-      <AssemblyReference>UiPath.Web.Activities</AssemblyReference>
       <AssemblyReference>Newtonsoft.Json</AssemblyReference>
     </scg:List>
   </TextExpression.ReferencesForImplementation>
 
   <Sequence DisplayName="Send Email via SendGrid" sap2010:WorkflowViewState.IdRef="Seq_Root">
-    <sap2010:Annotation.AnnotationText>shared/SendEmail.xaml — SendGrid wrapper.
+    <sap2010:Annotation.AnnotationText>shared/SendEmail.xaml — SendGrid wrapper via InvokeCode + System.Net.Http.
 
-Dry run: whole pipeline runs, provider = DRYRUN, no credits.
-Live:    POST /v3/mail/send with Bearer auth; 202 = success (empty body).
+Dry run: whole pipeline runs, provider = DRYRUN.
+Live:    POST /v3/mail/send with Bearer auth. 202 = success (empty body).
          401/403 = system exception (bad key or unverified Single Sender).</sap2010:Annotation.AnnotationText>
-    <Sequence.Variables>
-      <Variable x:TypeArguments="x:String" Name="ApiKeyPlain" />
-      <Variable x:TypeArguments="x:String" Name="JsonBody" />
-      <Variable x:TypeArguments="x:Int32" Name="StatusCode" />
-      <Variable x:TypeArguments="x:String" Name="Response" />
-      <Variable x:TypeArguments="x:Boolean" Name="Exit" Default="[False]" />
-    </Sequence.Variables>
 
-    <Assign DisplayName="Default outputs" sap2010:WorkflowViewState.IdRef="Assign_Defaults">
-      <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_Success]</OutArgument></Assign.To>
-      <Assign.Value><InArgument x:TypeArguments="x:Boolean">[False]</InArgument></Assign.Value>
-    </Assign>
+    <ui:InvokeCode DisplayName="SendGrid send"
+      sap2010:WorkflowViewState.IdRef="InvokeCode_SG"
+      Language="VBNet"
+      Code="out_Success = False
+out_MessageId = &quot;&quot;
+out_ErrorCode = &quot;&quot;
+out_Retryable = False
 
-    <If DisplayName="Validate email"
-      Condition="[String.IsNullOrWhiteSpace(in_To) OrElse Not Regex.IsMatch(in_To, &quot;^[^@\s]+@[^@\s]+\.[^@\s]+$&quot;)]"
-      sap2010:WorkflowViewState.IdRef="If_Bad">
-      <If.Then>
-        <Sequence sap2010:WorkflowViewState.IdRef="Seq_Bad">
-          <Assign sap2010:WorkflowViewState.IdRef="Assign_Bad_Code">
-            <Assign.To><OutArgument x:TypeArguments="x:String">[out_ErrorCode]</OutArgument></Assign.To>
-            <Assign.Value><InArgument x:TypeArguments="x:String">["INVALID_CONTACT"]</InArgument></Assign.Value>
-          </Assign>
-          <Assign sap2010:WorkflowViewState.IdRef="Assign_Bad_Retry">
-            <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_Retryable]</OutArgument></Assign.To>
-            <Assign.Value><InArgument x:TypeArguments="x:Boolean">[False]</InArgument></Assign.Value>
-          </Assign>
-          <Assign sap2010:WorkflowViewState.IdRef="Assign_Bad_Exit">
-            <Assign.To><OutArgument x:TypeArguments="x:Boolean">[Exit]</OutArgument></Assign.To>
-            <Assign.Value><InArgument x:TypeArguments="x:Boolean">[True]</InArgument></Assign.Value>
-          </Assign>
-        </Sequence>
-      </If.Then>
-    </If>
+' Guard: email shape
+If String.IsNullOrWhiteSpace(in_To) OrElse Not System.Text.RegularExpressions.Regex.IsMatch(in_To, &quot;^[^@\s]+@[^@\s]+\.[^@\s]+$&quot;) Then
+    out_ErrorCode = &quot;INVALID_CONTACT&quot;
+    Return
+End If
 
-    <If DisplayName="Dry run" Condition="[Not Exit AndAlso in_DryRun]"
-      sap2010:WorkflowViewState.IdRef="If_Dry">
-      <If.Then>
-        <Sequence sap2010:WorkflowViewState.IdRef="Seq_Dry">
-          <Assign sap2010:WorkflowViewState.IdRef="Assign_Dry_Id">
-            <Assign.To><OutArgument x:TypeArguments="x:String">[out_MessageId]</OutArgument></Assign.To>
-            <Assign.Value><InArgument x:TypeArguments="x:String">["DRYRUN-" &amp; Guid.NewGuid().ToString("N").Substring(0, 12)]</InArgument></Assign.Value>
-          </Assign>
-          <Assign sap2010:WorkflowViewState.IdRef="Assign_Dry_Ok">
-            <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_Success]</OutArgument></Assign.To>
-            <Assign.Value><InArgument x:TypeArguments="x:Boolean">[True]</InArgument></Assign.Value>
-          </Assign>
-          <ui:LogMessage DisplayName="Log dry-run" Level="Info"
-            Message="[&quot;EMAIL DRYRUN to &quot; &amp; in_To.Substring(0, Math.Min(2, in_To.Length)) &amp; &quot;****&quot; &amp; in_To.Substring(in_To.IndexOf(&quot;@&quot;c)) &amp; &quot; subj=&quot; &amp; in_Subject]"
-            sap2010:WorkflowViewState.IdRef="Log_Dry" />
-          <Assign sap2010:WorkflowViewState.IdRef="Assign_Dry_Exit">
-            <Assign.To><OutArgument x:TypeArguments="x:Boolean">[Exit]</OutArgument></Assign.To>
-            <Assign.Value><InArgument x:TypeArguments="x:Boolean">[True]</InArgument></Assign.Value>
-          </Assign>
-        </Sequence>
-      </If.Then>
-    </If>
+' Dry run
+If in_DryRun Then
+    out_MessageId = &quot;DRYRUN-&quot; &amp; Guid.NewGuid().ToString(&quot;N&quot;).Substring(0, 12)
+    out_Success = True
+    Return
+End If
 
-    <If DisplayName="Live send" Condition="[Not Exit]" sap2010:WorkflowViewState.IdRef="If_Live">
-      <If.Then>
-        <Sequence sap2010:WorkflowViewState.IdRef="Seq_Live">
-          <Assign sap2010:WorkflowViewState.IdRef="Assign_Key">
-            <Assign.To><OutArgument x:TypeArguments="x:String">[ApiKeyPlain]</OutArgument></Assign.To>
-            <Assign.Value><InArgument x:TypeArguments="x:String">[New System.Net.NetworkCredential(String.Empty, in_ApiKey).Password]</InArgument></Assign.Value>
-          </Assign>
+Try
+    Dim keyPlain As String = New System.Net.NetworkCredential(String.Empty, in_ApiKey).Password
+    Dim payload As New Newtonsoft.Json.Linq.JObject()
+    payload(&quot;personalizations&quot;) = New Newtonsoft.Json.Linq.JArray(New Newtonsoft.Json.Linq.JObject(New Newtonsoft.Json.Linq.JProperty(&quot;to&quot;, New Newtonsoft.Json.Linq.JArray(New Newtonsoft.Json.Linq.JObject(New Newtonsoft.Json.Linq.JProperty(&quot;email&quot;, in_To))))))
+    payload(&quot;from&quot;) = New Newtonsoft.Json.Linq.JObject(New Newtonsoft.Json.Linq.JProperty(&quot;email&quot;, in_FromEmail))
+    payload(&quot;subject&quot;) = in_Subject
+    payload(&quot;content&quot;) = New Newtonsoft.Json.Linq.JArray(New Newtonsoft.Json.Linq.JObject(New Newtonsoft.Json.Linq.JProperty(&quot;type&quot;, &quot;text/html&quot;), New Newtonsoft.Json.Linq.JProperty(&quot;value&quot;, in_HtmlBody)))
+    Dim jsonBody As String = payload.ToString()
 
-          <Assign sap2010:WorkflowViewState.IdRef="Assign_Body">
-            <Assign.To><OutArgument x:TypeArguments="x:String">[JsonBody]</OutArgument></Assign.To>
-            <Assign.Value><InArgument x:TypeArguments="x:String">[New Newtonsoft.Json.Linq.JObject(New Newtonsoft.Json.Linq.JProperty("personalizations", New Newtonsoft.Json.Linq.JArray(New Newtonsoft.Json.Linq.JObject(New Newtonsoft.Json.Linq.JProperty("to", New Newtonsoft.Json.Linq.JArray(New Newtonsoft.Json.Linq.JObject(New Newtonsoft.Json.Linq.JProperty("email", in_To))))))), New Newtonsoft.Json.Linq.JProperty("from", New Newtonsoft.Json.Linq.JObject(New Newtonsoft.Json.Linq.JProperty("email", in_FromEmail))), New Newtonsoft.Json.Linq.JProperty("subject", in_Subject), New Newtonsoft.Json.Linq.JProperty("content", New Newtonsoft.Json.Linq.JArray(New Newtonsoft.Json.Linq.JObject(New Newtonsoft.Json.Linq.JProperty("type", "text/html"), New Newtonsoft.Json.Linq.JProperty("value", in_HtmlBody))))).ToString()]</InArgument></Assign.Value>
-          </Assign>
+    Dim client As New System.Net.Http.HttpClient()
+    client.Timeout = TimeSpan.FromSeconds(30)
+    Dim req As New System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Post, &quot;https://api.sendgrid.com/v3/mail/send&quot;)
+    req.Headers.TryAddWithoutValidation(&quot;Authorization&quot;, &quot;Bearer &quot; &amp; keyPlain)
+    req.Headers.TryAddWithoutValidation(&quot;Accept&quot;, &quot;application/json&quot;)
+    req.Content = New System.Net.Http.StringContent(jsonBody, System.Text.Encoding.UTF8, &quot;application/json&quot;)
 
-          <TryCatch DisplayName="Call SendGrid" sap2010:WorkflowViewState.IdRef="Try_SG">
-            <TryCatch.Try>
-              <Sequence sap2010:WorkflowViewState.IdRef="Seq_Call">
-                <uwa:HttpClient DisplayName="POST /v3/mail/send"
-                  sap2010:WorkflowViewState.IdRef="Http_SG"
-                  EndPoint="https://api.sendgrid.com/v3/mail/send"
-                  Method="POST"
-                  Body="[JsonBody]"
-                  BodyFormat="application/json"
-                  ContinueOnError="True"
-                  Result="[Response]"
-                  StatusCode="[StatusCode]"
-                  TimeoutMS="30000">
-                  <uwa:HttpClient.Headers>
-                    <InArgument x:TypeArguments="scg:Dictionary(x:String, x:String)">[New Dictionary(Of String, String) From {{"Authorization", "Bearer " &amp; ApiKeyPlain}, {"Accept", "application/json"}}]</InArgument>
-                  </uwa:HttpClient.Headers>
-                </uwa:HttpClient>
+    Dim resp As System.Net.Http.HttpResponseMessage = client.SendAsync(req).GetAwaiter().GetResult()
+    Dim status As Integer = CInt(resp.StatusCode)
+    Dim body As String = resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+    client.Dispose()
 
-                <If Condition="[StatusCode = 202]" sap2010:WorkflowViewState.IdRef="If_202">
-                  <If.Then>
-                    <Sequence sap2010:WorkflowViewState.IdRef="Seq_202">
-                      <Assign sap2010:WorkflowViewState.IdRef="Assign_Ok_Id">
-                        <Assign.To><OutArgument x:TypeArguments="x:String">[out_MessageId]</OutArgument></Assign.To>
-                        <Assign.Value><InArgument x:TypeArguments="x:String">["SG-" &amp; Guid.NewGuid().ToString("N").Substring(0, 12)]</InArgument></Assign.Value>
-                      </Assign>
-                      <Assign sap2010:WorkflowViewState.IdRef="Assign_Ok_Bool">
-                        <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_Success]</OutArgument></Assign.To>
-                        <Assign.Value><InArgument x:TypeArguments="x:Boolean">[True]</InArgument></Assign.Value>
-                      </Assign>
-                    </Sequence>
-                  </If.Then>
-                  <If.Else>
-                    <Sequence sap2010:WorkflowViewState.IdRef="Seq_NotOk">
-                      <If Condition="[StatusCode = 401 OrElse StatusCode = 403]"
-                        sap2010:WorkflowViewState.IdRef="If_Auth">
-                        <If.Then>
-                          <Throw
-                            Exception="[New System.InvalidOperationException(&quot;SendGrid returned &quot; &amp; StatusCode.ToString() &amp; &quot; — SendGrid_ApiKey or Single Sender not set up&quot;)]"
-                            sap2010:WorkflowViewState.IdRef="Throw_Auth" />
-                        </If.Then>
-                      </If>
-                      <Assign sap2010:WorkflowViewState.IdRef="Assign_Err_Code">
-                        <Assign.To><OutArgument x:TypeArguments="x:String">[out_ErrorCode]</OutArgument></Assign.To>
-                        <Assign.Value><InArgument x:TypeArguments="x:String">[If(StatusCode = 400, "INVALID_CONTACT", "SENDGRID_HTTP_" &amp; StatusCode.ToString())]</InArgument></Assign.Value>
-                      </Assign>
-                      <Assign sap2010:WorkflowViewState.IdRef="Assign_Err_Retry">
-                        <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_Retryable]</OutArgument></Assign.To>
-                        <Assign.Value><InArgument x:TypeArguments="x:Boolean">[StatusCode = 429 OrElse StatusCode &gt;= 500]</InArgument></Assign.Value>
-                      </Assign>
-                    </Sequence>
-                  </If.Else>
-                </If>
-              </Sequence>
-            </TryCatch.Try>
-            <TryCatch.Catches>
-              <Catch x:TypeArguments="s:Exception" sap2010:WorkflowViewState.IdRef="Catch_SG">
-                <ActivityAction x:TypeArguments="s:Exception">
-                  <ActivityAction.Argument><DelegateInArgument x:TypeArguments="s:Exception" Name="ex" /></ActivityAction.Argument>
-                  <Sequence sap2010:WorkflowViewState.IdRef="Seq_Catch_SG">
-                    <Assign sap2010:WorkflowViewState.IdRef="Assign_Net_Code">
-                      <Assign.To><OutArgument x:TypeArguments="x:String">[out_ErrorCode]</OutArgument></Assign.To>
-                      <Assign.Value><InArgument x:TypeArguments="x:String">["NETWORK_TIMEOUT"]</InArgument></Assign.Value>
-                    </Assign>
-                    <Assign sap2010:WorkflowViewState.IdRef="Assign_Net_Retry">
-                      <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_Retryable]</OutArgument></Assign.To>
-                      <Assign.Value><InArgument x:TypeArguments="x:Boolean">[True]</InArgument></Assign.Value>
-                    </Assign>
-                  </Sequence>
-                </ActivityAction>
-              </Catch>
-            </TryCatch.Catches>
-          </TryCatch>
-        </Sequence>
-      </If.Then>
-    </If>
+    If status = 202 Then
+        out_MessageId = &quot;SG-&quot; &amp; Guid.NewGuid().ToString(&quot;N&quot;).Substring(0, 12)
+        out_Success = True
+    ElseIf status = 401 OrElse status = 403 Then
+        Throw New System.InvalidOperationException(&quot;SendGrid returned &quot; &amp; status.ToString() &amp; &quot; — SendGrid_ApiKey or Single Sender not set up&quot;)
+    Else
+        out_ErrorCode = If(status = 400, &quot;INVALID_CONTACT&quot;, &quot;SENDGRID_HTTP_&quot; &amp; status.ToString())
+        out_Retryable = (status = 429) OrElse (status &gt;= 500)
+    End If
+Catch iex As System.InvalidOperationException
+    Throw
+Catch ex As Exception
+    out_ErrorCode = &quot;NETWORK_TIMEOUT&quot;
+    out_Retryable = True
+End Try">
+      <ui:InvokeCode.Arguments>
+        <InArgument x:TypeArguments="x:String" x:Key="in_To">[in_To]</InArgument>
+        <InArgument x:TypeArguments="x:String" x:Key="in_Subject">[in_Subject]</InArgument>
+        <InArgument x:TypeArguments="x:String" x:Key="in_HtmlBody">[in_HtmlBody]</InArgument>
+        <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+        <InArgument x:TypeArguments="x:String" x:Key="in_FromEmail">[in_FromEmail]</InArgument>
+        <InArgument x:TypeArguments="x:Boolean" x:Key="in_DryRun">[in_DryRun]</InArgument>
+        <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Success">[out_Success]</OutArgument>
+        <OutArgument x:TypeArguments="x:String" x:Key="out_MessageId">[out_MessageId]</OutArgument>
+        <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[out_ErrorCode]</OutArgument>
+        <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[out_Retryable]</OutArgument>
+      </ui:InvokeCode.Arguments>
+    </ui:InvokeCode>
 
     <ui:LogMessage DisplayName="Log masked result" Level="Info"
       Message="[&quot;EMAIL to &quot; &amp; If(in_To.Contains(&quot;@&quot;), in_To.Substring(0, Math.Min(2, in_To.IndexOf(&quot;@&quot;c))) &amp; &quot;****&quot; &amp; in_To.Substring(in_To.IndexOf(&quot;@&quot;c)), in_To) &amp; &quot; success=&quot; &amp; out_Success.ToString() &amp; &quot; err=&quot; &amp; out_ErrorCode]"
