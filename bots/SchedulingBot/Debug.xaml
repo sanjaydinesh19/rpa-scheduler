@@ -1,0 +1,62 @@
+<Activity mc:Ignorable="sap sap2010" x:Class="Debug"
+ xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+ xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+ xmlns:s="clr-namespace:System;assembly=System.Private.CoreLib"
+ xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
+ xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
+ xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib"
+ xmlns:ui="http://schemas.uipath.com/workflow/activities"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <sap2010:ExpressionActivityEditor.ExpressionActivityEditor>VisualBasic</sap2010:ExpressionActivityEditor.ExpressionActivityEditor>
+  <TextExpression.NamespacesForImplementation>
+    <scg:List x:TypeArguments="x:String" Capacity="4">
+      <x:String>System</x:String>
+      <x:String>System.Collections.Generic</x:String>
+      <x:String>UiPath.Core</x:String>
+      <x:String>UiPath.Core.Activities</x:String>
+    </scg:List>
+  </TextExpression.NamespacesForImplementation>
+  <TextExpression.ReferencesForImplementation>
+    <scg:List x:TypeArguments="AssemblyReference" Capacity="4">
+      <AssemblyReference>UiPath.System.Activities</AssemblyReference>
+    </scg:List>
+  </TextExpression.ReferencesForImplementation>
+
+  <Sequence DisplayName="Debug launcher" sap2010:WorkflowViewState.IdRef="Seq_Root">
+    <sap2010:Annotation.AnnotationText>Click Debug File on THIS workflow. It calls Main.xaml with hardcoded values,
+which sidesteps Studio's Arguments panel and the "Unregistered Expression
+Editor" glitch.
+
+Prereq: Mock HMS running at http://localhost:5000 with REQUIRE_API_KEY=false
+and at least one PENDING_PUSH booking request in the DB.</sap2010:Annotation.AnnotationText>
+    <Sequence.Variables>
+      <Variable x:TypeArguments="x:Int32" Name="Processed" />
+      <Variable x:TypeArguments="x:Int32" Name="Failed" />
+    </Sequence.Variables>
+
+    <ui:InvokeWorkflowFile DisplayName="Run SchedulingBot Main"
+      sap2010:WorkflowViewState.IdRef="Invoke_Main"
+      WorkflowFileName="Main.xaml">
+      <ui:InvokeWorkflowFile.Arguments>
+        <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">["http://localhost:5000"]</InArgument>
+        <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[New System.Net.NetworkCredential("", "").SecurePassword]</InArgument>
+        <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxTransactions">[5]</InArgument>
+        <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxRetryAttempts">[3]</InArgument>
+        <InArgument x:TypeArguments="x:Boolean" x:Key="in_DryRunNotifications">[True]</InArgument>
+        <InArgument x:TypeArguments="x:String" x:Key="in_ExcelPath">[""]</InArgument>
+        <InArgument x:TypeArguments="x:String" x:Key="in_HospitalName">["Meridian General Hospital"]</InArgument>
+        <InArgument x:TypeArguments="x:String" x:Key="in_TwilioSid">[""]</InArgument>
+        <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_TwilioAuth">[New System.Net.NetworkCredential("", "").SecurePassword]</InArgument>
+        <InArgument x:TypeArguments="x:String" x:Key="in_TwilioFrom">[""]</InArgument>
+        <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_SendGridKey">[New System.Net.NetworkCredential("", "").SecurePassword]</InArgument>
+        <InArgument x:TypeArguments="x:String" x:Key="in_SendGridFrom">[""]</InArgument>
+        <OutArgument x:TypeArguments="x:Int32" x:Key="out_Processed">[Processed]</OutArgument>
+        <OutArgument x:TypeArguments="x:Int32" x:Key="out_Failed">[Failed]</OutArgument>
+      </ui:InvokeWorkflowFile.Arguments>
+    </ui:InvokeWorkflowFile>
+
+    <ui:LogMessage DisplayName="Log summary" Level="Info"
+      Message="[&quot;Debug run finished. Processed=&quot; &amp; Processed.ToString() &amp; &quot; Failed=&quot; &amp; Failed.ToString()]"
+      sap2010:WorkflowViewState.IdRef="Log_End" />
+  </Sequence>
+</Activity>
