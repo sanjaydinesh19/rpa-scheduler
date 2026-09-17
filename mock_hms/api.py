@@ -628,3 +628,25 @@ def get_booking_requests():
 def get_booking_request(reference):
     br = BookingRequest.query.filter_by(reference=reference).first()
     return jsonify(br.to_dict()) if br else err("VALIDATION_ERROR", "request not found")
+
+
+@api.patch("/booking-requests/<reference>")
+@require_api_key
+def patch_booking_request(reference):
+    """Bots mark an item PROCESSED or FAILED once they finish with it, so the
+    next poll skips items already picked up."""
+    br = BookingRequest.query.filter_by(reference=reference).first()
+    if br is None:
+        return err("VALIDATION_ERROR", "request not found")
+    d = request.get_json(silent=True) or {}
+    if "queue_status" in d:
+        allowed = ("NEW", "PENDING_PUSH", "QUEUED", "PROCESSED", "FAILED")
+        if d["queue_status"] not in allowed:
+            return err("VALIDATION_ERROR", f"queue_status must be one of {allowed}")
+        br.queue_status = d["queue_status"]
+    if "push_error" in d:
+        br.push_error = (d["push_error"] or "")[:255] or None
+    if "queue_item_id" in d:
+        br.queue_item_id = d["queue_item_id"]
+    db.session.commit()
+    return jsonify(br.to_dict())
