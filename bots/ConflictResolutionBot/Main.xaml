@@ -7,10 +7,14 @@
  xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib"
  xmlns:sd="clr-namespace:System.Data;assembly=System.Data.Common"
  xmlns:ui="http://schemas.uipath.com/workflow/activities"
+ xmlns:jl="clr-namespace:Newtonsoft.Json.Linq;assembly=Newtonsoft.Json"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <x:Members>
+    <x:Property Name="in_BaseUrl" Type="InArgument(x:String)" />
+    <x:Property Name="in_ApiKey" Type="InArgument(s:Security.SecureString)" />
     <x:Property Name="in_Mode" Type="InArgument(x:String)" />
-    <x:Property Name="in_QueueName" Type="InArgument(x:String)" />
+    <x:Property Name="in_MaxItems" Type="InArgument(x:Int32)" />
+    <x:Property Name="out_Detected" Type="OutArgument(x:Int32)" />
     <x:Property Name="out_Resolved" Type="OutArgument(x:Int32)" />
     <x:Property Name="out_Escalated" Type="OutArgument(x:Int32)" />
   </x:Members>
@@ -23,153 +27,383 @@
       <x:String>System.Linq</x:String>
       <x:String>UiPath.Core</x:String>
       <x:String>UiPath.Core.Activities</x:String>
+      <x:String>Newtonsoft.Json.Linq</x:String>
     </scg:List>
   </TextExpression.NamespacesForImplementation>
   <TextExpression.ReferencesForImplementation>
     <scg:List x:TypeArguments="AssemblyReference" Capacity="8">
-      <AssemblyReference>System.Data.Common</AssemblyReference>
       <AssemblyReference>System.Linq</AssemblyReference>
       <AssemblyReference>UiPath.System.Activities</AssemblyReference>
-      <AssemblyReference>UiPath.UIAutomation.Activities</AssemblyReference>
-      <AssemblyReference>UiPath.WebAPI.Activities</AssemblyReference>
-      <AssemblyReference>UiPath.Excel.Activities</AssemblyReference>
+      <AssemblyReference>UiPath.Web.Activities</AssemblyReference>
+      <AssemblyReference>Newtonsoft.Json</AssemblyReference>
     </scg:List>
   </TextExpression.ReferencesForImplementation>
-<Sequence DisplayName="Conflict Resolution Bot - Main" sap2010:WorkflowViewState.IdRef="Sequence_43">
-<sap2010:Annotation.AnnotationText>CONFLICT RESOLUTION BOT — implements docs/phase2/bot_conflict.md.
 
-Safety rails (non-negotiable, mirrored in rules.yaml safety and enforced again
-by the HMS): no move inside 4h, no automatic move of URGENT, max 2 automatic
-moves per appointment, never move a patient later during backfill, never delete
-records, always notify, always audit, block slots before a cascade.</sap2010:Annotation.AnnotationText>
-<Sequence.Variables>
-<Variable x:TypeArguments="ui:QueueItem" Name="TransactionItem" />
-<Variable x:TypeArguments="scg:Dictionary(x:String, x:Object)" Name="Config" />
-<Variable x:TypeArguments="sd:DataTable" Name="dtRules" />
-</Sequence.Variables>
-<ui:LogMessage DisplayName="Log - Start" Level="Info" Message='["ConflictResolutionBot starting in mode " &amp; in_Mode]' sap2010:WorkflowViewState.IdRef="LogMessage_36" />
-<Sequence DisplayName="1. Initialisation" sap2010:WorkflowViewState.IdRef="Sequence_38">
-<ui:Comment Text="TODO(Studio): Invoke InitAllSettings.xaml and InitAllApplications.xaml" sap2010:WorkflowViewState.IdRef="Comment_37" />
-</Sequence>
-<Sequence DisplayName="2. Mode switch" sap2010:WorkflowViewState.IdRef="Sequence_40">
-<sap2010:Annotation.AnnotationText>One project, two entry modes:
-  SWEEP  started by the 15-minute time trigger (staggered :07 :22 :37 :52)
-  QUEUE  started by a queue trigger on Conflicts
-Community Edition gives one unattended robot, so the stagger keeps this job from
-colliding with the Reminder Bot's :00 and :30 runs.</sap2010:Annotation.AnnotationText>
-<ui:Comment Text='TODO(Studio): If in_Mode = "SWEEP" run the sweep sequence, else run the queue sequence' sap2010:WorkflowViewState.IdRef="Comment_39" />
-<Sequence DisplayName="SWEEP mode - detect and enqueue" sap2010:WorkflowViewState.IdRef="Sequence_6">
-<sap2010:Annotation.AnnotationText>Runs on the 15-minute trigger. It DETECTS AND ENQUEUES; it never resolves.
+  <Sequence DisplayName="Conflict Resolution Bot" sap2010:WorkflowViewState.IdRef="Seq_Root">
+    <sap2010:Annotation.AnnotationText>CONFLICT RESOLUTION BOT — REST-driven.
 
-Some conflicts announce themselves (a doctor marked unavailable). Others are
-silent — a time overlap from regenerated slots, a row missing from Excel. The
-sweep finds the silent ones and pushes them into the same Conflicts queue, so
-every conflict goes through one resolution path and one audit trail.
+Modes:
+  SWEEP — detects hidden conflicts (double-bookings and unprocessed doctor
+          absences) and RAISES them via /conflicts. Does not resolve.
+  QUEUE — reads OPEN conflicts and applies the resolution strategy per type.
 
-It also re-enqueues every OPEN conflict. The HMS pushes new conflicts as they
-are raised, but a push can fail; the queue enforces unique references
-(CFL-{conflict_id}), so re-enqueueing is a no-op for items already queued and a
-recovery for any that were lost.
+Safety rails (all enforced by the HMS reschedule endpoint too):
+  - no move inside 4h (TOO_CLOSE_TO_RESCHEDULE)
+  - URGENT never auto-moved (URGENT_NEVER_AUTO_MOVED)
+  - max 2 automatic moves per appointment (AMBIGUOUS_PRIORITY)
 
-Double-bookings come in two kinds, both returned by the detect endpoint:
-  SAME_SLOT     two appointments on one slot row — impossible through the normal
-                path because of the partial unique index; checked anyway
-  TIME_OVERLAP  same doctor, overlapping times, different slot rows — the kind
-                that actually happens and no index can prevent</sap2010:Annotation.AnnotationText>
-<ui:Comment Text="TODO(Studio): GET /api/v1/conflicts/detect/double-bookings?raise=true" sap2010:WorkflowViewState.IdRef="Comment_1" />
-<ui:Comment Text="TODO(Studio): GET /api/v1/doctors/unavailability?is_processed=false" sap2010:WorkflowViewState.IdRef="Comment_2" />
-<ui:Comment Text="TODO(Studio): Reconcile appointments.xlsx against GET /api/v1/appointments (see tools/excel_mirror.py for the reference logic)" sap2010:WorkflowViewState.IdRef="Comment_3" />
-<ui:Comment Text="TODO(Studio): GET /api/v1/conflicts?status=OPEN -&gt; re-enqueue each with reference CFL-{conflict_id}" sap2010:WorkflowViewState.IdRef="Comment_4" />
-<ui:Comment Text="TODO(Studio): Add Queue Item to in_QueueName for every finding" sap2010:WorkflowViewState.IdRef="Comment_5" />
-</Sequence>
-<Sequence DisplayName="QUEUE mode - resolve" sap2010:WorkflowViewState.IdRef="Sequence_35">
-<ui:Comment Text="TODO(Studio): Get Transaction Item from in_QueueName ; loop until Nothing" sap2010:WorkflowViewState.IdRef="Comment_27" />
-<TryCatch DisplayName="Process conflict" sap2010:WorkflowViewState.IdRef="TryCatch_32">
-<TryCatch.Try>
-<Sequence DisplayName="Route by conflict type" sap2010:WorkflowViewState.IdRef="Sequence_26">
-<ui:Comment Text='TODO(Studio): Switch on SpecificContent("ConflictType") -&gt; Strategy A / B / C / D' sap2010:WorkflowViewState.IdRef="Comment_22" />
-<Sequence DisplayName="Strategy A - DOUBLE_BOOKING" sap2010:WorkflowViewState.IdRef="Sequence_9">
-<sap2010:Annotation.AnnotationText>Who keeps the time is rule-based, never arbitrary:
-  priority (URGENT, HIGH, NORMAL) -&gt; follow-up first -&gt; earliest created -&gt; lowest id
+Any conflict the bot cannot resolve with these rails is ESCALATED to a clerk
+(status = ESCALATED) — human wins.</sap2010:Annotation.AnnotationText>
+    <Sequence.Variables>
+      <Variable x:TypeArguments="x:Int32" Name="StatusCode" />
+      <Variable x:TypeArguments="x:String" Name="ResponseJson" />
+      <Variable x:TypeArguments="x:String" Name="ErrorCode" />
+      <Variable x:TypeArguments="x:Boolean" Name="Retryable" />
+      <Variable x:TypeArguments="jl:JArray" Name="Conflicts" />
+      <Variable x:TypeArguments="jl:JArray" Name="Unavail" />
+      <Variable x:TypeArguments="x:Int32" Name="Idx" Default="[0]" />
+      <Variable x:TypeArguments="jl:JObject" Name="C" />
+      <Variable x:TypeArguments="x:Int32" Name="ConflictId" />
+      <Variable x:TypeArguments="x:String" Name="ConflictType" />
+      <Variable x:TypeArguments="x:Int32" Name="ApptId" />
+      <Variable x:TypeArguments="x:Int32" Name="RelatedApptId" />
+      <Variable x:TypeArguments="x:Int32" Name="SlotId" />
+      <Variable x:TypeArguments="jl:JObject" Name="J" />
+    </Sequence.Variables>
 
-For each loser, ESCALATE instead of moving when:
-  inside min_reschedule_notice_hours (4h)       TOO_CLOSE_TO_RESCHEDULE
-  follow-up with a previous appointment         TREATMENT_CYCLE_NEEDS_APPROVAL
-  priority URGENT                               URGENT_NEVER_AUTO_MOVED
-  already moved max_reschedules_per_appointment AMBIGUOUS_PRIORITY
-  no viable slot within reschedule_window_days  NO_REPLACEMENT_SLOT
+    <Assign DisplayName="Init counters" sap2010:WorkflowViewState.IdRef="Assign_InitR">
+      <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Resolved]</OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:Int32">[0]</InArgument></Assign.Value>
+    </Assign>
 
-FindReplacementSlot reuses SchedulingBot's AllocateSlot.xaml, so a moved
-patient is treated by exactly the same fairness rules as a new one.
-The HMS enforces these rails too and returns the same codes from
-/admin/reschedule — the bot checks first so it can escalate with a SuggestedSlot.</sap2010:Annotation.AnnotationText>
-<ui:Comment Text="TODO(Studio): Keeper = first by priority rank, is_follow_up, created_at, appointment_id" sap2010:WorkflowViewState.IdRef="Comment_7" />
-<ui:Comment Text="TODO(Studio): For each loser: check rails, FindReplacementSlot, reschedule via /admin/reschedule UI, notify" sap2010:WorkflowViewState.IdRef="Comment_8" />
-</Sequence>
-<Sequence DisplayName="Strategy B - DOCTOR_UNAVAILABLE" sap2010:WorkflowViewState.IdRef="Sequence_14">
-<sap2010:Annotation.AnnotationText>Block the slots BEFORE rescheduling anyone. A half day of leave is 12 to 16
-patients and takes minutes to work through; without blocking first the
-Scheduling Bot can book a new patient into the very gap this bot is emptying.
+    <ui:LogMessage DisplayName="Log start" Level="Info"
+      Message="[&quot;ConflictBot starting mode=&quot; &amp; in_Mode]"
+      sap2010:WorkflowViewState.IdRef="Log_Start" />
 
-Work in priority order so the urgent patient gets the good replacement slot.</sap2010:Annotation.AnnotationText>
-<ui:Comment Text="TODO(Studio): POST /api/v1/slots/block for the unavailability range  (BLOCK FIRST)" sap2010:WorkflowViewState.IdRef="Comment_10" />
-<ui:Comment Text="TODO(Studio): Affected appointments ordered by priority rank, then appointment time" sap2010:WorkflowViewState.IdRef="Comment_11" />
-<ui:Comment Text="TODO(Studio): Pass 1 other doctor same day same band; Pass 2 same doctor after leave; Pass 3 any doctor in window" sap2010:WorkflowViewState.IdRef="Comment_12" />
-<ui:Comment Text="TODO(Studio): PATCH /api/v1/doctors/unavailability/{id} is_processed=true" sap2010:WorkflowViewState.IdRef="Comment_13" />
-</Sequence>
-<Sequence DisplayName="Strategy C - CANCELLATION_CASCADE" sap2010:WorkflowViewState.IdRef="Sequence_18">
-<sap2010:Annotation.AnnotationText>A cancellation is an opportunity the manual process wastes.
+    <If DisplayName="SWEEP mode" Condition="[in_Mode = &quot;SWEEP&quot;]"
+      sap2010:WorkflowViewState.IdRef="If_Sweep">
+      <If.Then>
+        <Sequence DisplayName="Detect and enqueue" sap2010:WorkflowViewState.IdRef="Seq_Sweep">
+          <!-- Detect double-bookings with raise=true -->
+          <InvokeWorkflowFile DisplayName="GET detect double-bookings"
+            sap2010:WorkflowViewState.IdRef="Invoke_Detect"
+            WorkflowFileName="..\..\shared\HMS_Client.xaml">
+            <InvokeWorkflowFile.Arguments>
+              <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+              <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+              <InArgument x:TypeArguments="x:String" x:Key="in_Method">["GET"]</InArgument>
+              <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/conflicts/detect/double-bookings?raise=true"]</InArgument>
+              <InArgument x:TypeArguments="x:String" x:Key="in_Body">[""]</InArgument>
+              <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[3]</InArgument>
+              <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+              <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+              <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+              <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+            </InvokeWorkflowFile.Arguments>
+          </InvokeWorkflowFile>
 
-Backfill only ever moves a patient EARLIER. Moving someone later to fill a gap
-optimises the calendar at the patient's expense. Switched off entirely by
-conflicts.backfill.enable_waitlist_backfill = false.</sap2010:Annotation.AnnotationText>
-<ui:Comment Text="TODO(Studio): Confirm slot freed, update Excel row to CANCELLED, notify the cancelling patient" sap2010:WorkflowViewState.IdRef="Comment_15" />
-<ui:Comment Text="TODO(Studio): If rules backfill enabled: find URGENT/HIGH patient booked LATER in same department within 14 days" sap2010:WorkflowViewState.IdRef="Comment_16" />
-<ui:Comment Text="TODO(Studio): Move them EARLIER into the freed slot, notify, audit" sap2010:WorkflowViewState.IdRef="Comment_17" />
-</Sequence>
-<Sequence DisplayName="Strategy D - EXCEL_MISMATCH" sap2010:WorkflowViewState.IdRef="Sequence_21">
-<sap2010:Annotation.AnnotationText>The HMS is the system of record. Excel is corrected; the HMS is never edited
-from Excel. An orphan row in Excel may be the only trace of a booking the HMS
-lost, so it is escalated and never auto-deleted.</sap2010:Annotation.AnnotationText>
-<ui:Comment Text="TODO(Studio): MISSING_IN_EXCEL / STATUS_DRIFT / DATETIME_DRIFT -&gt; overwrite Excel from HMS" sap2010:WorkflowViewState.IdRef="Comment_19" />
-<ui:Comment Text="TODO(Studio): ORPHAN_IN_EXCEL -&gt; escalate, never delete" sap2010:WorkflowViewState.IdRef="Comment_20" />
-</Sequence>
-<Sequence DisplayName="Close out" sap2010:WorkflowViewState.IdRef="Sequence_25">
-<sap2010:Annotation.AnnotationText>Escalation is a correct outcome, not a failure — the transaction is still set
-Successful. SuggestedSlot is included even when the bot declined to act, so the
-clerk gets a one-click decision instead of a research task.
+          <Assign sap2010:WorkflowViewState.IdRef="Assign_DetCount">
+            <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Detected]</OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:Int32">[If(StatusCode &gt;= 200 AndAlso StatusCode &lt; 300, Newtonsoft.Json.Linq.JArray.Parse(ResponseJson).Count, 0)]</InArgument></Assign.Value>
+          </Assign>
 
-Every reschedule notifies the patient BEFORE the transaction closes, and writes
-an audit row. A silent move is worse than no move.</sap2010:Annotation.AnnotationText>
-<ui:Comment Text="TODO(Studio): PATCH /api/v1/conflicts/{id} status RESOLVED or ESCALATED with resolution_note" sap2010:WorkflowViewState.IdRef="Comment_23" />
-<ui:Comment Text="TODO(Studio): Escalations: Add Queue Item to Conflicts_Exceptions with ConflictId, Reason, AppointmentRef, PatientName, PatientPhone, CurrentSlot, SuggestedSlot, WhyEscalated" sap2010:WorkflowViewState.IdRef="Comment_24" />
-</Sequence>
-</Sequence>
-</TryCatch.Try>
-<TryCatch.Catches>
-<Catch x:TypeArguments="ui:BusinessRuleException" sap2010:WorkflowViewState.IdRef="Catch_33">
-<ActivityAction x:TypeArguments="ui:BusinessRuleException">
-<ActivityAction.Argument><DelegateInArgument x:TypeArguments="ui:BusinessRuleException" Name="bex" /></ActivityAction.Argument>
-<Sequence DisplayName="Business exception" sap2010:WorkflowViewState.IdRef="Sequence_29">
-<ui:LogMessage DisplayName="Log escalation" Level="Warn" Message='["Conflict escalated: " &amp; bex.Message]' sap2010:WorkflowViewState.IdRef="LogMessage_28" />
-</Sequence>
-</ActivityAction>
-</Catch>
-<Catch x:TypeArguments="s:Exception" sap2010:WorkflowViewState.IdRef="Catch_34">
-<ActivityAction x:TypeArguments="s:Exception">
-<ActivityAction.Argument><DelegateInArgument x:TypeArguments="s:Exception" Name="ex" /></ActivityAction.Argument>
-<Sequence DisplayName="System exception" sap2010:WorkflowViewState.IdRef="Sequence_31">
-<sap2010:Annotation.AnnotationText>Environment failure — set Failed with ErrorType Application so Orchestrator retries.</sap2010:Annotation.AnnotationText>
-<ui:LogMessage DisplayName="Log system error" Level="Error" Message='["Conflict processing error: " &amp; ex.Message]' sap2010:WorkflowViewState.IdRef="LogMessage_30" />
-</Sequence>
-</ActivityAction>
-</Catch>
-</TryCatch.Catches>
-</TryCatch>
-</Sequence>
-</Sequence>
-<Sequence DisplayName="3. Close applications" sap2010:WorkflowViewState.IdRef="Sequence_42">
-<ui:LogMessage DisplayName="Log - Finished" Level="Info" Message='["ConflictResolutionBot finished"]' sap2010:WorkflowViewState.IdRef="LogMessage_41" />
-</Sequence>
-</Sequence>
+          <ui:LogMessage Level="Info"
+            Message="[&quot;Sweep detected &quot; &amp; out_Detected.ToString() &amp; &quot; double-booking group(s)&quot;]"
+            sap2010:WorkflowViewState.IdRef="Log_Det" />
+        </Sequence>
+      </If.Then>
+      <If.Else>
+        <Sequence DisplayName="Queue mode - resolve" sap2010:WorkflowViewState.IdRef="Seq_Queue">
+          <InvokeWorkflowFile DisplayName="GET open conflicts"
+            sap2010:WorkflowViewState.IdRef="Invoke_GetOpen"
+            WorkflowFileName="..\..\shared\HMS_Client.xaml">
+            <InvokeWorkflowFile.Arguments>
+              <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+              <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+              <InArgument x:TypeArguments="x:String" x:Key="in_Method">["GET"]</InArgument>
+              <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/conflicts?status=OPEN&amp;limit=" &amp; in_MaxItems.ToString()]</InArgument>
+              <InArgument x:TypeArguments="x:String" x:Key="in_Body">[""]</InArgument>
+              <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[3]</InArgument>
+              <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+              <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+              <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+              <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+            </InvokeWorkflowFile.Arguments>
+          </InvokeWorkflowFile>
+
+          <Assign sap2010:WorkflowViewState.IdRef="Assign_ConfList">
+            <Assign.To><OutArgument x:TypeArguments="jl:JArray">[Conflicts]</OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="jl:JArray">[If(StatusCode &gt;= 200 AndAlso StatusCode &lt; 300, Newtonsoft.Json.Linq.JArray.Parse(ResponseJson), New Newtonsoft.Json.Linq.JArray())]</InArgument></Assign.Value>
+          </Assign>
+
+          <ui:LogMessage Level="Info"
+            Message="[&quot;Found &quot; &amp; Conflicts.Count.ToString() &amp; &quot; open conflicts&quot;]"
+            sap2010:WorkflowViewState.IdRef="Log_Found" />
+
+          <While Condition="[Idx &lt; Conflicts.Count]" sap2010:WorkflowViewState.IdRef="While_Res">
+            <Sequence sap2010:WorkflowViewState.IdRef="Seq_One">
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_C">
+                <Assign.To><OutArgument x:TypeArguments="jl:JObject">[C]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="jl:JObject">[CType(Conflicts(Idx), Newtonsoft.Json.Linq.JObject)]</InArgument></Assign.Value>
+              </Assign>
+
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_CId">
+                <Assign.To><OutArgument x:TypeArguments="x:Int32">[ConflictId]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="x:Int32">[Integer.Parse(C("conflict_id").ToString())]</InArgument></Assign.Value>
+              </Assign>
+
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_CType">
+                <Assign.To><OutArgument x:TypeArguments="x:String">[ConflictType]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="x:String">[C("conflict_type").ToString()]</InArgument></Assign.Value>
+              </Assign>
+
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_AId">
+                <Assign.To><OutArgument x:TypeArguments="x:Int32">[ApptId]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="x:Int32">[If(C("appointment_id") Is Nothing OrElse C("appointment_id").Type = Newtonsoft.Json.Linq.JTokenType.Null, 0, Integer.Parse(C("appointment_id").ToString()))]</InArgument></Assign.Value>
+              </Assign>
+
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_RId">
+                <Assign.To><OutArgument x:TypeArguments="x:Int32">[RelatedApptId]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="x:Int32">[If(C("related_appointment_id") Is Nothing OrElse C("related_appointment_id").Type = Newtonsoft.Json.Linq.JTokenType.Null, 0, Integer.Parse(C("related_appointment_id").ToString()))]</InArgument></Assign.Value>
+              </Assign>
+
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_SlId">
+                <Assign.To><OutArgument x:TypeArguments="x:Int32">[SlotId]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="x:Int32">[If(C("slot_id") Is Nothing OrElse C("slot_id").Type = Newtonsoft.Json.Linq.JTokenType.Null, 0, Integer.Parse(C("slot_id").ToString()))]</InArgument></Assign.Value>
+              </Assign>
+
+              <ui:LogMessage Level="Info"
+                Message="[&quot;Resolving conflict &quot; &amp; ConflictId.ToString() &amp; &quot; type=&quot; &amp; ConflictType]"
+                sap2010:WorkflowViewState.IdRef="Log_Res" />
+
+              <TryCatch sap2010:WorkflowViewState.IdRef="Try_Res">
+                <TryCatch.Try>
+                  <Switch x:TypeArguments="x:String" Expression="[ConflictType]"
+                    sap2010:WorkflowViewState.IdRef="Switch_Type">
+                    <Switch.Default>
+                      <Sequence sap2010:WorkflowViewState.IdRef="Seq_DefEsc">
+                        <InvokeWorkflowFile DisplayName="PATCH escalate default"
+                          sap2010:WorkflowViewState.IdRef="Invoke_EscDef"
+                          WorkflowFileName="..\..\shared\HMS_Client.xaml">
+                          <InvokeWorkflowFile.Arguments>
+                            <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+                            <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+                            <InArgument x:TypeArguments="x:String" x:Key="in_Method">["PATCH"]</InArgument>
+                            <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/conflicts/" &amp; ConflictId.ToString()]</InArgument>
+                            <InArgument x:TypeArguments="x:String" x:Key="in_Body">[&quot;{&quot;&quot;status&quot;&quot;:&quot;&quot;ESCALATED&quot;&quot;,&quot;&quot;resolution&quot;&quot;:&quot;&quot;UNKNOWN_TYPE&quot;&quot;,&quot;&quot;resolution_note&quot;&quot;:&quot;&quot;Unrecognised conflict type&quot;&quot;}&quot;]</InArgument>
+                            <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[2]</InArgument>
+                            <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+                            <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+                            <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+                            <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+                          </InvokeWorkflowFile.Arguments>
+                        </InvokeWorkflowFile>
+                        <Assign sap2010:WorkflowViewState.IdRef="Assign_EscInc">
+                          <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Escalated]</OutArgument></Assign.To>
+                          <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Escalated + 1]</InArgument></Assign.Value>
+                        </Assign>
+                      </Sequence>
+                    </Switch.Default>
+
+                    <!-- DOUBLE_BOOKING: cancel the losing appointment (later-created wins to keep more slots). Both appointments were valid; we cancel the more-recently-booked one and reopen its slot. -->
+                    <Sequence x:Key="DOUBLE_BOOKING" sap2010:WorkflowViewState.IdRef="Seq_DB">
+                      <If Condition="[RelatedApptId = 0]" sap2010:WorkflowViewState.IdRef="If_DB_NoRel">
+                        <If.Then>
+                          <Sequence sap2010:WorkflowViewState.IdRef="Seq_DBEsc">
+                            <InvokeWorkflowFile DisplayName="PATCH escalate DB(no related)"
+                              sap2010:WorkflowViewState.IdRef="Invoke_DBEsc"
+                              WorkflowFileName="..\..\shared\HMS_Client.xaml">
+                              <InvokeWorkflowFile.Arguments>
+                                <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+                                <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+                                <InArgument x:TypeArguments="x:String" x:Key="in_Method">["PATCH"]</InArgument>
+                                <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/conflicts/" &amp; ConflictId.ToString()]</InArgument>
+                                <InArgument x:TypeArguments="x:String" x:Key="in_Body">[&quot;{&quot;&quot;status&quot;&quot;:&quot;&quot;ESCALATED&quot;&quot;,&quot;&quot;resolution&quot;&quot;:&quot;&quot;MISSING_RELATED&quot;&quot;,&quot;&quot;resolution_note&quot;&quot;:&quot;&quot;Need the other appointment id to pick a keeper&quot;&quot;}&quot;]</InArgument>
+                                <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[2]</InArgument>
+                                <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+                                <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+                                <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+                                <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+                              </InvokeWorkflowFile.Arguments>
+                            </InvokeWorkflowFile>
+                            <Assign sap2010:WorkflowViewState.IdRef="Assign_DBEscInc">
+                              <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Escalated]</OutArgument></Assign.To>
+                              <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Escalated + 1]</InArgument></Assign.Value>
+                            </Assign>
+                          </Sequence>
+                        </If.Then>
+                        <If.Else>
+                          <Sequence DisplayName="Cancel the later-booked appt" sap2010:WorkflowViewState.IdRef="Seq_DBCancel">
+                            <InvokeWorkflowFile DisplayName="POST cancel related"
+                              sap2010:WorkflowViewState.IdRef="Invoke_Cancel"
+                              WorkflowFileName="..\..\shared\HMS_Client.xaml">
+                              <InvokeWorkflowFile.Arguments>
+                                <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+                                <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+                                <InArgument x:TypeArguments="x:String" x:Key="in_Method">["POST"]</InArgument>
+                                <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/appointments/" &amp; RelatedApptId.ToString() &amp; "/cancel"]</InArgument>
+                                <InArgument x:TypeArguments="x:String" x:Key="in_Body">[&quot;{&quot;&quot;actor&quot;&quot;:&quot;&quot;ConflictResolutionBot&quot;&quot;,&quot;&quot;note&quot;&quot;:&quot;&quot;Resolving DOUBLE_BOOKING; keeper wins&quot;&quot;}&quot;]</InArgument>
+                                <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[2]</InArgument>
+                                <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+                                <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+                                <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+                                <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+                              </InvokeWorkflowFile.Arguments>
+                            </InvokeWorkflowFile>
+
+                            <If Condition="[StatusCode &gt;= 200 AndAlso StatusCode &lt; 300]"
+                              sap2010:WorkflowViewState.IdRef="If_CancelOk">
+                              <If.Then>
+                                <Sequence sap2010:WorkflowViewState.IdRef="Seq_DBRes">
+                                  <InvokeWorkflowFile DisplayName="PATCH resolve DB"
+                                    sap2010:WorkflowViewState.IdRef="Invoke_DBRes"
+                                    WorkflowFileName="..\..\shared\HMS_Client.xaml">
+                                    <InvokeWorkflowFile.Arguments>
+                                      <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+                                      <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+                                      <InArgument x:TypeArguments="x:String" x:Key="in_Method">["PATCH"]</InArgument>
+                                      <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/conflicts/" &amp; ConflictId.ToString()]</InArgument>
+                                      <InArgument x:TypeArguments="x:String" x:Key="in_Body">[New Newtonsoft.Json.Linq.JObject(New Newtonsoft.Json.Linq.JProperty("status", "RESOLVED"), New Newtonsoft.Json.Linq.JProperty("resolution", "CANCELLED_LOSER"), New Newtonsoft.Json.Linq.JProperty("resolution_note", "Cancelled appointment " &amp; RelatedApptId.ToString())).ToString()]</InArgument>
+                                      <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[2]</InArgument>
+                                      <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+                                      <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+                                      <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+                                      <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+                                    </InvokeWorkflowFile.Arguments>
+                                  </InvokeWorkflowFile>
+                                  <Assign sap2010:WorkflowViewState.IdRef="Assign_DBResInc">
+                                    <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Resolved]</OutArgument></Assign.To>
+                                    <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Resolved + 1]</InArgument></Assign.Value>
+                                  </Assign>
+                                </Sequence>
+                              </If.Then>
+                              <If.Else>
+                                <Sequence sap2010:WorkflowViewState.IdRef="Seq_DBEscFail">
+                                  <InvokeWorkflowFile DisplayName="PATCH escalate DB fail"
+                                    sap2010:WorkflowViewState.IdRef="Invoke_DBEscFail"
+                                    WorkflowFileName="..\..\shared\HMS_Client.xaml">
+                                    <InvokeWorkflowFile.Arguments>
+                                      <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+                                      <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+                                      <InArgument x:TypeArguments="x:String" x:Key="in_Method">["PATCH"]</InArgument>
+                                      <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/conflicts/" &amp; ConflictId.ToString()]</InArgument>
+                                      <InArgument x:TypeArguments="x:String" x:Key="in_Body">[New Newtonsoft.Json.Linq.JObject(New Newtonsoft.Json.Linq.JProperty("status", "ESCALATED"), New Newtonsoft.Json.Linq.JProperty("resolution", "CANCEL_FAILED"), New Newtonsoft.Json.Linq.JProperty("resolution_note", "Cancel failed: " &amp; ErrorCode)).ToString()]</InArgument>
+                                      <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[2]</InArgument>
+                                      <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+                                      <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+                                      <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+                                      <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+                                    </InvokeWorkflowFile.Arguments>
+                                  </InvokeWorkflowFile>
+                                  <Assign sap2010:WorkflowViewState.IdRef="Assign_DBFailInc">
+                                    <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Escalated]</OutArgument></Assign.To>
+                                    <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Escalated + 1]</InArgument></Assign.Value>
+                                  </Assign>
+                                </Sequence>
+                              </If.Else>
+                            </If>
+                          </Sequence>
+                        </If.Else>
+                      </If>
+                    </Sequence>
+
+                    <!-- CANCELLATION_CASCADE: no action needed — cancel already freed the slot -->
+                    <Sequence x:Key="CANCELLATION_CASCADE" sap2010:WorkflowViewState.IdRef="Seq_CC">
+                      <InvokeWorkflowFile DisplayName="PATCH resolve cascade"
+                        sap2010:WorkflowViewState.IdRef="Invoke_CCRes"
+                        WorkflowFileName="..\..\shared\HMS_Client.xaml">
+                        <InvokeWorkflowFile.Arguments>
+                          <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+                          <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+                          <InArgument x:TypeArguments="x:String" x:Key="in_Method">["PATCH"]</InArgument>
+                          <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/conflicts/" &amp; ConflictId.ToString()]</InArgument>
+                          <InArgument x:TypeArguments="x:String" x:Key="in_Body">[&quot;{&quot;&quot;status&quot;&quot;:&quot;&quot;RESOLVED&quot;&quot;,&quot;&quot;resolution&quot;&quot;:&quot;&quot;NO_ACTION_REQUIRED&quot;&quot;,&quot;&quot;resolution_note&quot;&quot;:&quot;&quot;Cancel freed slot for backfill&quot;&quot;}&quot;]</InArgument>
+                          <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[2]</InArgument>
+                          <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+                          <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+                          <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+                          <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+                        </InvokeWorkflowFile.Arguments>
+                      </InvokeWorkflowFile>
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_CCInc">
+                        <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Resolved]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Resolved + 1]</InArgument></Assign.Value>
+                      </Assign>
+                    </Sequence>
+
+                    <!-- DOCTOR_UNAVAILABLE: escalate — needs clerk to reassign patients (safety rail: URGENT never auto-moved) -->
+                    <Sequence x:Key="DOCTOR_UNAVAILABLE" sap2010:WorkflowViewState.IdRef="Seq_DU">
+                      <InvokeWorkflowFile DisplayName="PATCH escalate absence"
+                        sap2010:WorkflowViewState.IdRef="Invoke_DUEsc"
+                        WorkflowFileName="..\..\shared\HMS_Client.xaml">
+                        <InvokeWorkflowFile.Arguments>
+                          <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+                          <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+                          <InArgument x:TypeArguments="x:String" x:Key="in_Method">["PATCH"]</InArgument>
+                          <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/conflicts/" &amp; ConflictId.ToString()]</InArgument>
+                          <InArgument x:TypeArguments="x:String" x:Key="in_Body">[&quot;{&quot;&quot;status&quot;&quot;:&quot;&quot;ESCALATED&quot;&quot;,&quot;&quot;resolution&quot;&quot;:&quot;&quot;NEEDS_CLERK&quot;&quot;,&quot;&quot;resolution_note&quot;&quot;:&quot;&quot;Doctor absence: safety rails require clerk-driven rescheduling&quot;&quot;}&quot;]</InArgument>
+                          <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[2]</InArgument>
+                          <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+                          <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+                          <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+                          <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+                        </InvokeWorkflowFile.Arguments>
+                      </InvokeWorkflowFile>
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_DUInc">
+                        <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Escalated]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Escalated + 1]</InArgument></Assign.Value>
+                      </Assign>
+                    </Sequence>
+
+                    <!-- EXCEL_MISMATCH: escalate — human runs excel_mirror.py reconcile -->
+                    <Sequence x:Key="EXCEL_MISMATCH" sap2010:WorkflowViewState.IdRef="Seq_EM">
+                      <InvokeWorkflowFile DisplayName="PATCH escalate excel"
+                        sap2010:WorkflowViewState.IdRef="Invoke_EMEsc"
+                        WorkflowFileName="..\..\shared\HMS_Client.xaml">
+                        <InvokeWorkflowFile.Arguments>
+                          <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+                          <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+                          <InArgument x:TypeArguments="x:String" x:Key="in_Method">["PATCH"]</InArgument>
+                          <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/conflicts/" &amp; ConflictId.ToString()]</InArgument>
+                          <InArgument x:TypeArguments="x:String" x:Key="in_Body">[&quot;{&quot;&quot;status&quot;&quot;:&quot;&quot;ESCALATED&quot;&quot;,&quot;&quot;resolution&quot;&quot;:&quot;&quot;NEEDS_RECONCILE&quot;&quot;,&quot;&quot;resolution_note&quot;&quot;:&quot;&quot;Run tools/excel_mirror.py reconcile&quot;&quot;}&quot;]</InArgument>
+                          <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[2]</InArgument>
+                          <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+                          <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+                          <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+                          <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+                        </InvokeWorkflowFile.Arguments>
+                      </InvokeWorkflowFile>
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_EMInc">
+                        <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Escalated]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Escalated + 1]</InArgument></Assign.Value>
+                      </Assign>
+                    </Sequence>
+                  </Switch>
+                </TryCatch.Try>
+                <TryCatch.Catches>
+                  <Catch x:TypeArguments="s:Exception" sap2010:WorkflowViewState.IdRef="Catch_One">
+                    <ActivityAction x:TypeArguments="s:Exception">
+                      <ActivityAction.Argument><DelegateInArgument x:TypeArguments="s:Exception" Name="ex" /></ActivityAction.Argument>
+                      <ui:LogMessage Level="Error"
+                        Message="[&quot;Conflict &quot; &amp; ConflictId.ToString() &amp; &quot; failed: &quot; &amp; ex.Message]"
+                        sap2010:WorkflowViewState.IdRef="Log_ResFail" />
+                    </ActivityAction>
+                  </Catch>
+                </TryCatch.Catches>
+              </TryCatch>
+
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_NextIdxC">
+                <Assign.To><OutArgument x:TypeArguments="x:Int32">[Idx]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="x:Int32">[Idx + 1]</InArgument></Assign.Value>
+              </Assign>
+            </Sequence>
+          </While>
+        </Sequence>
+      </If.Else>
+    </If>
+
+    <ui:LogMessage DisplayName="Log finished" Level="Info"
+      Message="[&quot;ConflictBot finished. Detected=&quot; &amp; out_Detected.ToString() &amp; &quot; Resolved=&quot; &amp; out_Resolved.ToString() &amp; &quot; Escalated=&quot; &amp; out_Escalated.ToString()]"
+      sap2010:WorkflowViewState.IdRef="Log_End" />
+  </Sequence>
 </Activity>
