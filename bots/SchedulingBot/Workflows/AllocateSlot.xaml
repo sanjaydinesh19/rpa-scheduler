@@ -57,10 +57,6 @@ Scoring within a pass:
 Ties break by Date ASC, StartTime ASC, SlotId ASC — deterministic across runs.
 
 Returns SlotId = 0 if no candidate in any pass. Caller raises NO_SLOT_AVAILABLE.</sap2010:Annotation.AnnotationText>
-    <Sequence.Variables>
-      <Variable x:TypeArguments="x:String" Name="Code" Default="[BuildAllocationCode()]" />
-    </Sequence.Variables>
-
     <Assign DisplayName="Default outputs" sap2010:WorkflowViewState.IdRef="Assign_Defaults">
       <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_SelectedSlotId]</OutArgument></Assign.To>
       <Assign.Value><InArgument x:TypeArguments="x:Int32">[0]</InArgument></Assign.Value>
