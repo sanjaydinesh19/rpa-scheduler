@@ -118,10 +118,10 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
       Message="[&quot;SchedulingBot starting. Base=&quot; &amp; in_BaseUrl &amp; &quot; MaxTx=&quot; &amp; in_MaxTransactions.ToString()]"
       sap2010:WorkflowViewState.IdRef="Log_Start" />
 
-    <InvokeWorkflowFile DisplayName="GET pending booking requests"
+    <ui:InvokeWorkflowFile DisplayName="GET pending booking requests"
       sap2010:WorkflowViewState.IdRef="Invoke_GetPending"
       WorkflowFileName="..\..\shared\HMS_Client.xaml">
-      <InvokeWorkflowFile.Arguments>
+      <ui:InvokeWorkflowFile.Arguments>
         <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
         <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
         <InArgument x:TypeArguments="x:String" x:Key="in_Method">["GET"]</InArgument>
@@ -132,8 +132,8 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
         <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
         <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
         <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-      </InvokeWorkflowFile.Arguments>
-    </InvokeWorkflowFile>
+      </ui:InvokeWorkflowFile.Arguments>
+    </ui:InvokeWorkflowFile>
 
     <If DisplayName="Failed to fetch pending"
       Condition="[StatusCode &lt; 200 OrElse StatusCode &gt;= 300]"
@@ -258,10 +258,10 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
 
               <!-- Find or register patient -->
               <Sequence DisplayName="Step 2 - Find or register patient" sap2010:WorkflowViewState.IdRef="Seq_Patient">
-                <InvokeWorkflowFile DisplayName="GET patients by phone"
+                <ui:InvokeWorkflowFile DisplayName="GET patients by phone"
                   sap2010:WorkflowViewState.IdRef="Invoke_GetPatient"
                   WorkflowFileName="..\..\shared\HMS_Client.xaml">
-                  <InvokeWorkflowFile.Arguments>
+                  <ui:InvokeWorkflowFile.Arguments>
                     <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
                     <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
                     <InArgument x:TypeArguments="x:String" x:Key="in_Method">["GET"]</InArgument>
@@ -272,8 +272,8 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                     <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
                     <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
                     <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-                  </InvokeWorkflowFile.Arguments>
-                </InvokeWorkflowFile>
+                  </ui:InvokeWorkflowFile.Arguments>
+                </ui:InvokeWorkflowFile>
 
                 <If DisplayName="Patient found?"
                   Condition="[Not String.IsNullOrWhiteSpace(ResponseJson) AndAlso Newtonsoft.Json.Linq.JArray.Parse(ResponseJson).Count &gt; 0]"
@@ -308,10 +308,10 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                   </If.Then>
                   <If.Else>
                     <Sequence DisplayName="Register new patient" sap2010:WorkflowViewState.IdRef="Seq_Register">
-                      <InvokeWorkflowFile DisplayName="POST patients"
+                      <ui:InvokeWorkflowFile DisplayName="POST patients"
                         sap2010:WorkflowViewState.IdRef="Invoke_RegPat"
                         WorkflowFileName="..\..\shared\HMS_Client.xaml">
-                        <InvokeWorkflowFile.Arguments>
+                        <ui:InvokeWorkflowFile.Arguments>
                           <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
                           <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
                           <InArgument x:TypeArguments="x:String" x:Key="in_Method">["POST"]</InArgument>
@@ -322,8 +322,8 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                           <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
                           <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
                           <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-                        </InvokeWorkflowFile.Arguments>
-                      </InvokeWorkflowFile>
+                        </ui:InvokeWorkflowFile.Arguments>
+                      </ui:InvokeWorkflowFile>
 
                       <If Condition="[StatusCode &lt; 200 OrElse StatusCode &gt;= 300]"
                         sap2010:WorkflowViewState.IdRef="If_RegFail">
@@ -376,10 +376,10 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
 
               <!-- Search slots -->
               <Sequence DisplayName="Step 4 - Search slots" sap2010:WorkflowViewState.IdRef="Seq_Search">
-                <InvokeWorkflowFile DisplayName="GET slots"
+                <ui:InvokeWorkflowFile DisplayName="GET slots"
                   sap2010:WorkflowViewState.IdRef="Invoke_GetSlots"
                   WorkflowFileName="..\..\shared\HMS_Client.xaml">
-                  <InvokeWorkflowFile.Arguments>
+                  <ui:InvokeWorkflowFile.Arguments>
                     <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
                     <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
                     <InArgument x:TypeArguments="x:String" x:Key="in_Method">["GET"]</InArgument>
@@ -390,8 +390,8 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                     <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
                     <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
                     <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-                  </InvokeWorkflowFile.Arguments>
-                </InvokeWorkflowFile>
+                  </ui:InvokeWorkflowFile.Arguments>
+                </ui:InvokeWorkflowFile>
                 <Assign sap2010:WorkflowViewState.IdRef="Assign_Slots">
                   <Assign.To><OutArgument x:TypeArguments="jl:JArray">[Slots]</OutArgument></Assign.To>
                   <Assign.Value><InArgument x:TypeArguments="jl:JArray">[Newtonsoft.Json.Linq.JArray.Parse(ResponseJson)]</InArgument></Assign.Value>
@@ -428,10 +428,10 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                       <Assign.Value><InArgument x:TypeArguments="x:Int32">[AttemptsUsed + 1]</InArgument></Assign.Value>
                     </Assign>
 
-                    <InvokeWorkflowFile DisplayName="Allocate best slot"
+                    <ui:InvokeWorkflowFile DisplayName="Allocate best slot"
                       sap2010:WorkflowViewState.IdRef="Invoke_Alloc"
                       WorkflowFileName="Workflows\AllocateSlot.xaml">
-                      <InvokeWorkflowFile.Arguments>
+                      <ui:InvokeWorkflowFile.Arguments>
                         <InArgument x:TypeArguments="jl:JArray" x:Key="in_Slots">[Slots]</InArgument>
                         <InArgument x:TypeArguments="scg:List(x:Int32)" x:Key="in_ExcludedSlotIds">[ExcludedSlots]</InArgument>
                         <InArgument x:TypeArguments="x:String" x:Key="in_Priority">[Priority]</InArgument>
@@ -441,8 +441,8 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                         <OutArgument x:TypeArguments="x:Int32" x:Key="out_SelectedSlotId">[SelectedSlotId]</OutArgument>
                         <OutArgument x:TypeArguments="x:Int32" x:Key="out_SelectedSlotVersion">[SelectedSlotVersion]</OutArgument>
                         <OutArgument x:TypeArguments="x:Int32" x:Key="out_AllocationPass">[AllocationPass]</OutArgument>
-                      </InvokeWorkflowFile.Arguments>
-                    </InvokeWorkflowFile>
+                      </ui:InvokeWorkflowFile.Arguments>
+                    </ui:InvokeWorkflowFile>
 
                     <If Condition="[SelectedSlotId = 0]" sap2010:WorkflowViewState.IdRef="If_NoAlloc">
                       <If.Then>
@@ -456,10 +456,10 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                       <TryCatch.Try>
                         <Sequence sap2010:WorkflowViewState.IdRef="Seq_LockBook">
 
-                          <InvokeWorkflowFile DisplayName="Lock slot"
+                          <ui:InvokeWorkflowFile DisplayName="Lock slot"
                             sap2010:WorkflowViewState.IdRef="Invoke_Lock"
                             WorkflowFileName="..\..\shared\HMS_Client.xaml">
-                            <InvokeWorkflowFile.Arguments>
+                            <ui:InvokeWorkflowFile.Arguments>
                               <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
                               <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
                               <InArgument x:TypeArguments="x:String" x:Key="in_Method">["POST"]</InArgument>
@@ -470,8 +470,8 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                               <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
                               <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
                               <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-                            </InvokeWorkflowFile.Arguments>
-                          </InvokeWorkflowFile>
+                            </ui:InvokeWorkflowFile.Arguments>
+                          </ui:InvokeWorkflowFile>
 
                           <If DisplayName="Lock failed?"
                             Condition="[StatusCode &lt; 200 OrElse StatusCode &gt;= 300]"
@@ -481,8 +481,11 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                                 <ui:LogMessage Level="Warn"
                                   Message="[&quot;Lock failed slot=&quot; &amp; SelectedSlotId.ToString() &amp; &quot; err=&quot; &amp; ErrorCode]"
                                   sap2010:WorkflowViewState.IdRef="Log_LockFail" />
-                                <InvokeMethod TargetObject="[ExcludedSlots]" MethodName="Add"
+                                <InvokeMethod MethodName="Add"
                                   sap2010:WorkflowViewState.IdRef="Add_Excl_Lock">
+                                  <InvokeMethod.TargetObject>
+                                    <InArgument x:TypeArguments="scg:List(x:Int32)">[ExcludedSlots]</InArgument>
+                                  </InvokeMethod.TargetObject>
                                   <InvokeMethod.Parameters>
                                     <InArgument x:TypeArguments="x:Int32">[SelectedSlotId]</InArgument>
                                   </InvokeMethod.Parameters>
@@ -492,10 +495,10 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                             <If.Else>
                               <Sequence DisplayName="Recheck and book" sap2010:WorkflowViewState.IdRef="Seq_ReBook">
                                 <!-- Book -->
-                                <InvokeWorkflowFile DisplayName="POST appointment"
+                                <ui:InvokeWorkflowFile DisplayName="POST appointment"
                                   sap2010:WorkflowViewState.IdRef="Invoke_Book"
                                   WorkflowFileName="..\..\shared\HMS_Client.xaml">
-                                  <InvokeWorkflowFile.Arguments>
+                                  <ui:InvokeWorkflowFile.Arguments>
                                     <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
                                     <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
                                     <InArgument x:TypeArguments="x:String" x:Key="in_Method">["POST"]</InArgument>
@@ -506,8 +509,8 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                                     <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
                                     <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
                                     <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-                                  </InvokeWorkflowFile.Arguments>
-                                </InvokeWorkflowFile>
+                                  </ui:InvokeWorkflowFile.Arguments>
+                                </ui:InvokeWorkflowFile>
 
                                 <If Condition="[StatusCode &gt;= 200 AndAlso StatusCode &lt; 300]"
                                   sap2010:WorkflowViewState.IdRef="If_BookOk">
@@ -547,8 +550,11 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                                       <If Condition="[ErrorCode = &quot;SLOT_TAKEN&quot; OrElse ErrorCode = &quot;SLOT_LOCKED&quot;]"
                                         sap2010:WorkflowViewState.IdRef="If_SlotContended">
                                         <If.Then>
-                                          <InvokeMethod TargetObject="[ExcludedSlots]" MethodName="Add"
+                                          <InvokeMethod MethodName="Add"
                                             sap2010:WorkflowViewState.IdRef="Add_Excl_Book">
+                                            <InvokeMethod.TargetObject>
+                                              <InArgument x:TypeArguments="scg:List(x:Int32)">[ExcludedSlots]</InArgument>
+                                            </InvokeMethod.TargetObject>
                                             <InvokeMethod.Parameters>
                                               <InArgument x:TypeArguments="x:Int32">[SelectedSlotId]</InArgument>
                                             </InvokeMethod.Parameters>
@@ -570,10 +576,10 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                       </TryCatch.Try>
                       <TryCatch.Finally>
                         <Sequence DisplayName="Release lock (always)" sap2010:WorkflowViewState.IdRef="Seq_Release">
-                          <InvokeWorkflowFile DisplayName="POST release"
+                          <ui:InvokeWorkflowFile DisplayName="POST release"
                             sap2010:WorkflowViewState.IdRef="Invoke_Release"
                             WorkflowFileName="..\..\shared\HMS_Client.xaml">
-                            <InvokeWorkflowFile.Arguments>
+                            <ui:InvokeWorkflowFile.Arguments>
                               <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
                               <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
                               <InArgument x:TypeArguments="x:String" x:Key="in_Method">["POST"]</InArgument>
@@ -584,8 +590,8 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                               <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
                               <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
                               <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-                            </InvokeWorkflowFile.Arguments>
-                          </InvokeWorkflowFile>
+                            </ui:InvokeWorkflowFile.Arguments>
+                          </ui:InvokeWorkflowFile>
                         </Sequence>
                       </TryCatch.Finally>
                     </TryCatch>
@@ -601,62 +607,12 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                 </If>
               </Sequence>
 
-              <!-- Mirror to Excel -->
-              <Sequence DisplayName="Step 6 - Mirror to Excel" sap2010:WorkflowViewState.IdRef="Seq_Excel">
-                <TryCatch sap2010:WorkflowViewState.IdRef="Try_Excel">
-                  <TryCatch.Try>
-                    <Sequence sap2010:WorkflowViewState.IdRef="Seq_ExcelBody">
-                      <ui:ExcelApplicationCard DisplayName="Excel scope"
-                        sap2010:WorkflowViewState.IdRef="Excel_Scope"
-                        FilePath="[in_ExcelPath]"
-                        Visible="False">
-                        <ui:ExcelApplicationCard.Body>
-                          <ActivityAction x:TypeArguments="ui:WorkbookApplication">
-                            <ActivityAction.Argument>
-                              <DelegateInArgument x:TypeArguments="ui:WorkbookApplication" Name="Workbook" />
-                            </ActivityAction.Argument>
-                            <Sequence sap2010:WorkflowViewState.IdRef="Seq_ExcelInner">
-                              <ui:ExcelAppendRange DisplayName="Append row"
-                                sap2010:WorkflowViewState.IdRef="Excel_Append"
-                                SheetName="Appointments">
-                                <ui:ExcelAppendRange.DataTable>
-                                  <InArgument x:TypeArguments="sd:DataTable">[BuildExcelRowTable(AppointmentRef, PatientName, Phone, Department, DoctorName, AppointmentDateTime, Priority)]</InArgument>
-                                </ui:ExcelAppendRange.DataTable>
-                              </ui:ExcelAppendRange>
-                            </Sequence>
-                          </ActivityAction>
-                        </ui:ExcelApplicationCard.Body>
-                      </ui:ExcelApplicationCard>
-                      <InvokeWorkflowFile DisplayName="PATCH synced_to_excel_at"
-                        sap2010:WorkflowViewState.IdRef="Invoke_Synced"
-                        WorkflowFileName="..\..\shared\HMS_Client.xaml">
-                        <InvokeWorkflowFile.Arguments>
-                          <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
-                          <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
-                          <InArgument x:TypeArguments="x:String" x:Key="in_Method">["PATCH"]</InArgument>
-                          <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/appointments/" &amp; AppointmentId.ToString()]</InArgument>
-                          <InArgument x:TypeArguments="x:String" x:Key="in_Body">[&quot;{&quot;&quot;synced_to_excel_at&quot;&quot;:true}&quot;]</InArgument>
-                          <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[2]</InArgument>
-                          <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
-                          <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
-                          <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
-                          <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-                        </InvokeWorkflowFile.Arguments>
-                      </InvokeWorkflowFile>
-                    </Sequence>
-                  </TryCatch.Try>
-                  <TryCatch.Catches>
-                    <Catch x:TypeArguments="s:Exception" sap2010:WorkflowViewState.IdRef="Catch_Excel">
-                      <ActivityAction x:TypeArguments="s:Exception">
-                        <ActivityAction.Argument><DelegateInArgument x:TypeArguments="s:Exception" Name="ex" /></ActivityAction.Argument>
-                        <ui:LogMessage Level="Warn"
-                          Message="[&quot;Excel mirror failed (non-fatal): &quot; &amp; ex.Message]"
-                          sap2010:WorkflowViewState.IdRef="Log_ExcelFail" />
-                      </ActivityAction>
-                    </Catch>
-                  </TryCatch.Catches>
-                </TryCatch>
-              </Sequence>
+              <!-- Excel mirroring is done out-of-band by tools/excel_mirror.py sync.
+                   Studio 26's Modern Excel activities live in a different package
+                   than the classic ones, and pinning it here would break Studio
+                   for anyone on a slightly different pack version. Keeping the
+                   bot free of that dependency; the reconciler is the source of
+                   truth for the Excel copy. -->
 
               <!-- Send confirmation -->
               <Sequence DisplayName="Step 7 - Confirmation" sap2010:WorkflowViewState.IdRef="Seq_Conf">
@@ -674,10 +630,10 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                     <Sequence sap2010:WorkflowViewState.IdRef="Seq_NotifSend">
                       <If Condition="[NotificationChannel = &quot;SMS&quot;]" sap2010:WorkflowViewState.IdRef="If_ChSMS">
                         <If.Then>
-                          <InvokeWorkflowFile DisplayName="Send SMS"
+                          <ui:InvokeWorkflowFile DisplayName="Send SMS"
                             sap2010:WorkflowViewState.IdRef="Invoke_SMS"
                             WorkflowFileName="..\..\shared\SendSMS.xaml">
-                            <InvokeWorkflowFile.Arguments>
+                            <ui:InvokeWorkflowFile.Arguments>
                               <InArgument x:TypeArguments="x:String" x:Key="in_To">[Phone]</InArgument>
                               <InArgument x:TypeArguments="x:String" x:Key="in_Body">[MsgBody]</InArgument>
                               <InArgument x:TypeArguments="x:String" x:Key="in_AccountSid">[in_TwilioSid]</InArgument>
@@ -688,16 +644,16 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                               <OutArgument x:TypeArguments="x:String" x:Key="out_MessageId">[NotifMessageId]</OutArgument>
                               <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[NotifError]</OutArgument>
                               <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[NotifRetryable]</OutArgument>
-                            </InvokeWorkflowFile.Arguments>
-                          </InvokeWorkflowFile>
+                            </ui:InvokeWorkflowFile.Arguments>
+                          </ui:InvokeWorkflowFile>
                         </If.Then>
                         <If.Else>
                           <If Condition="[NotificationChannel = &quot;EMAIL&quot;]" sap2010:WorkflowViewState.IdRef="If_ChEmail">
                             <If.Then>
-                              <InvokeWorkflowFile DisplayName="Send Email"
+                              <ui:InvokeWorkflowFile DisplayName="Send Email"
                                 sap2010:WorkflowViewState.IdRef="Invoke_Email"
                                 WorkflowFileName="..\..\shared\SendEmail.xaml">
-                                <InvokeWorkflowFile.Arguments>
+                                <ui:InvokeWorkflowFile.Arguments>
                                   <InArgument x:TypeArguments="x:String" x:Key="in_To">[Email]</InArgument>
                                   <InArgument x:TypeArguments="x:String" x:Key="in_Subject">[in_HospitalName &amp; " appointment confirmation " &amp; AppointmentRef]</InArgument>
                                   <InArgument x:TypeArguments="x:String" x:Key="in_HtmlBody">["&lt;p&gt;" &amp; MsgBody &amp; "&lt;/p&gt;"]</InArgument>
@@ -708,8 +664,8 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                                   <OutArgument x:TypeArguments="x:String" x:Key="out_MessageId">[NotifMessageId]</OutArgument>
                                   <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[NotifError]</OutArgument>
                                   <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[NotifRetryable]</OutArgument>
-                                </InvokeWorkflowFile.Arguments>
-                              </InvokeWorkflowFile>
+                                </ui:InvokeWorkflowFile.Arguments>
+                              </ui:InvokeWorkflowFile>
                             </If.Then>
                           </If>
                         </If.Else>
@@ -718,10 +674,10 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                       <If Condition="[NotificationChannel &lt;&gt; &quot;NONE&quot; AndAlso NotifOk]"
                         sap2010:WorkflowViewState.IdRef="If_LogNotif">
                         <If.Then>
-                          <InvokeWorkflowFile DisplayName="POST notifications"
+                          <ui:InvokeWorkflowFile DisplayName="POST notifications"
                             sap2010:WorkflowViewState.IdRef="Invoke_LogNotif"
                             WorkflowFileName="..\..\shared\HMS_Client.xaml">
-                            <InvokeWorkflowFile.Arguments>
+                            <ui:InvokeWorkflowFile.Arguments>
                               <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
                               <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
                               <InArgument x:TypeArguments="x:String" x:Key="in_Method">["POST"]</InArgument>
@@ -732,8 +688,8 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                               <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
                               <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
                               <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-                            </InvokeWorkflowFile.Arguments>
-                          </InvokeWorkflowFile>
+                            </ui:InvokeWorkflowFile.Arguments>
+                          </ui:InvokeWorkflowFile>
                         </If.Then>
                       </If>
                     </Sequence>
@@ -752,10 +708,10 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
               </Sequence>
 
               <!-- Mark PROCESSED -->
-              <InvokeWorkflowFile DisplayName="PATCH booking-request PROCESSED"
+              <ui:InvokeWorkflowFile DisplayName="PATCH booking-request PROCESSED"
                 sap2010:WorkflowViewState.IdRef="Invoke_MarkOk"
                 WorkflowFileName="..\..\shared\HMS_Client.xaml">
-                <InvokeWorkflowFile.Arguments>
+                <ui:InvokeWorkflowFile.Arguments>
                   <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
                   <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
                   <InArgument x:TypeArguments="x:String" x:Key="in_Method">["PATCH"]</InArgument>
@@ -766,8 +722,8 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                   <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
                   <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
                   <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-                </InvokeWorkflowFile.Arguments>
-              </InvokeWorkflowFile>
+                </ui:InvokeWorkflowFile.Arguments>
+              </ui:InvokeWorkflowFile>
 
               <Assign DisplayName="Increment processed" sap2010:WorkflowViewState.IdRef="Assign_IncOk">
                 <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Processed]</OutArgument></Assign.To>
@@ -792,10 +748,10 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                   <ui:LogMessage Level="Warn"
                     Message="[&quot;Business exception ref=&quot; &amp; RequestRef &amp; &quot;: &quot; &amp; FailureReason]"
                     sap2010:WorkflowViewState.IdRef="Log_Biz" />
-                  <InvokeWorkflowFile DisplayName="PATCH booking-request FAILED"
+                  <ui:InvokeWorkflowFile DisplayName="PATCH booking-request FAILED"
                     sap2010:WorkflowViewState.IdRef="Invoke_MarkFail"
                     WorkflowFileName="..\..\shared\HMS_Client.xaml">
-                    <InvokeWorkflowFile.Arguments>
+                    <ui:InvokeWorkflowFile.Arguments>
                       <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
                       <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
                       <InArgument x:TypeArguments="x:String" x:Key="in_Method">["PATCH"]</InArgument>
@@ -806,8 +762,8 @@ translate SpecificContent into the CurrentReq JObject.</sap2010:Annotation.Annot
                       <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
                       <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
                       <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-                    </InvokeWorkflowFile.Arguments>
-                  </InvokeWorkflowFile>
+                    </ui:InvokeWorkflowFile.Arguments>
+                  </ui:InvokeWorkflowFile>
                   <Assign sap2010:WorkflowViewState.IdRef="Assign_IncFail">
                     <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Failed]</OutArgument></Assign.To>
                     <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Failed + 1]</InArgument></Assign.Value>
