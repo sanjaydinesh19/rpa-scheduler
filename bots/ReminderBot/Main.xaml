@@ -7,10 +7,19 @@
  xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib"
  xmlns:sd="clr-namespace:System.Data;assembly=System.Data.Common"
  xmlns:ui="http://schemas.uipath.com/workflow/activities"
+ xmlns:jl="clr-namespace:Newtonsoft.Json.Linq;assembly=Newtonsoft.Json"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <x:Members>
+    <x:Property Name="in_BaseUrl" Type="InArgument(x:String)" />
+    <x:Property Name="in_ApiKey" Type="InArgument(s:Security.SecureString)" />
     <x:Property Name="in_DryRun" Type="InArgument(x:Boolean)" />
     <x:Property Name="in_NowOverride" Type="InArgument(x:String)" />
+    <x:Property Name="in_HospitalName" Type="InArgument(x:String)" />
+    <x:Property Name="in_TwilioSid" Type="InArgument(x:String)" />
+    <x:Property Name="in_TwilioAuth" Type="InArgument(s:Security.SecureString)" />
+    <x:Property Name="in_TwilioFrom" Type="InArgument(x:String)" />
+    <x:Property Name="in_SendGridKey" Type="InArgument(s:Security.SecureString)" />
+    <x:Property Name="in_SendGridFrom" Type="InArgument(x:String)" />
     <x:Property Name="out_Sent" Type="OutArgument(x:Int32)" />
     <x:Property Name="out_Skipped" Type="OutArgument(x:Int32)" />
     <x:Property Name="out_Failed" Type="OutArgument(x:Int32)" />
@@ -22,139 +31,443 @@
       <x:String>System.Collections.Generic</x:String>
       <x:String>System.Data</x:String>
       <x:String>System.Linq</x:String>
+      <x:String>System.Text.RegularExpressions</x:String>
       <x:String>UiPath.Core</x:String>
       <x:String>UiPath.Core.Activities</x:String>
+      <x:String>Newtonsoft.Json.Linq</x:String>
     </scg:List>
   </TextExpression.NamespacesForImplementation>
   <TextExpression.ReferencesForImplementation>
     <scg:List x:TypeArguments="AssemblyReference" Capacity="8">
-      <AssemblyReference>System.Data.Common</AssemblyReference>
       <AssemblyReference>System.Linq</AssemblyReference>
+      <AssemblyReference>System.Text.RegularExpressions</AssemblyReference>
       <AssemblyReference>UiPath.System.Activities</AssemblyReference>
-      <AssemblyReference>UiPath.WebAPI.Activities</AssemblyReference>
+      <AssemblyReference>UiPath.Web.Activities</AssemblyReference>
+      <AssemblyReference>Newtonsoft.Json</AssemblyReference>
     </scg:List>
   </TextExpression.ReferencesForImplementation>
-<Sequence DisplayName="Reminder Bot - Main" sap2010:WorkflowViewState.IdRef="Sequence_28">
-<sap2010:Annotation.AnnotationText>REMINDER BOT — implements docs/phase2/bot_reminder.md.
 
-Trigger: Orchestrator time trigger, cron 0 0,30 7-21 * * ?, Asia/Kolkata,
-max concurrent jobs 1, stop if running longer than 20 minutes.
+  <Sequence DisplayName="Reminder Bot" sap2010:WorkflowViewState.IdRef="Seq_Root">
+    <sap2010:Annotation.AnnotationText>REMINDER BOT — REST-driven.
 
-Build the activity tree inside each stage. The stage order is the design.</sap2010:Annotation.AnnotationText>
-<Sequence.Variables>
-<Variable x:TypeArguments="sd:DataTable" Name="dtDue" />
-<Variable x:TypeArguments="sd:DataTable" Name="dtDue24" />
-<Variable x:TypeArguments="sd:DataTable" Name="dtDue2" />
-<Variable x:TypeArguments="sd:DataTable" Name="dtRules" />
-<Variable x:TypeArguments="sd:DataTable" Name="dtTemplates" />
-<Variable x:TypeArguments="scg:Dictionary(x:String, x:Object)" Name="Config" />
-</Sequence.Variables>
-<ui:LogMessage DisplayName="Log - Start" Level="Info" Message='["ReminderBot starting. DryRun=" &amp; in_DryRun.ToString()]' sap2010:WorkflowViewState.IdRef="LogMessage_17" />
-<Sequence DisplayName="1. Initialisation" sap2010:WorkflowViewState.IdRef="Sequence_19">
-<sap2010:Annotation.AnnotationText>Load Data/Config.xlsx, Data/rules.xlsx and Data/templates.xlsx.
-Get Orchestrator assets. A missing credential is a SYSTEM exception: stop the job.</sap2010:Annotation.AnnotationText>
-<ui:Comment Text="TODO(Studio): Invoke InitAllSettings.xaml ; Get Assets HMS_BaseUrl, HMS_ApiKey, Twilio_*, SendGrid_*" sap2010:WorkflowViewState.IdRef="Comment_18" />
-</Sequence>
-<Sequence DisplayName="2. Quiet hours gate" sap2010:WorkflowViewState.IdRef="Sequence_21">
-<sap2010:Annotation.AnnotationText>Never message a patient between 21:00 and 07:00.
-Policy is DEFER, not DROP: a 2h reminder due at 06:00 is picked up by the 07:00
-run and still arrives an hour before the appointment. An appointment that has
-already started is logged SKIPPED / TOO_LATE.</sap2010:Annotation.AnnotationText>
-<ui:Comment Text="TODO(Studio): If Now outside rules reminders.quiet_hours (07:00-21:00) -&gt; log and end" sap2010:WorkflowViewState.IdRef="Comment_20" />
-</Sequence>
-<Sequence DisplayName="3. Fetch due reminders" sap2010:WorkflowViewState.IdRef="Sequence_24">
-<sap2010:Annotation.AnnotationText>Time-triggered, not queue-driven: an appointment becomes due because time passed,
-not because an event fired.
+Time trigger. Pulls T-24h and T-2h due reminders from the HMS, resolves channel
+per consent + escalation rules, renders the message, sends via SendSMS or
+SendEmail, and POSTs a notification row so re-runs are idempotent.
 
-The HMS applies the window tolerance (plus or minus 15 minutes around T-24h and
-T-2h), excludes cancelled appointments and anything already SENT, and skips the
-24h reminder for late bookings made inside 2 hours.
-in_NowOverride, when set, is passed as &amp;now= so tests can time-travel.</sap2010:Annotation.AnnotationText>
-<ui:Comment Text="TODO(Studio): HTTP GET /api/v1/reminders/due?window=24H -&gt; dtDue24" sap2010:WorkflowViewState.IdRef="Comment_22" />
-<ui:Comment Text="TODO(Studio): HTTP GET /api/v1/reminders/due?window=2H  -&gt; dtDue2" sap2010:WorkflowViewState.IdRef="Comment_23" />
-</Sequence>
-<ui:ForEachRow DisplayName="4. For each due appointment" DataTable="[dtDue]" sap2010:WorkflowViewState.IdRef="ForEachRow_25">
-<sap2010:Annotation.AnnotationText>Trigger setting Max concurrent jobs = 1 is load-bearing. The idempotency check
-covers re-runs, but two runs racing on the same appointment could both pass the
-check before either writes its notification row.</sap2010:Annotation.AnnotationText>
-<ui:ForEachRow.Body>
-<ActivityAction x:TypeArguments="sd:DataRow">
-<ActivityAction.Argument><DelegateInArgument x:TypeArguments="sd:DataRow" Name="row" /></ActivityAction.Argument>
-<Sequence DisplayName="Handle one appointment" sap2010:WorkflowViewState.IdRef="Sequence_16">
-<Sequence DisplayName="A. Idempotency check" sap2010:WorkflowViewState.IdRef="Sequence_2">
-<sap2010:Annotation.AnnotationText>Before anything else: has a SENT notification of this type already been logged?
-  GET /api/v1/notifications?appointment_id={id}&amp;type={REMINDER_24H|REMINDER_2H}&amp;status=SENT
-Found -&gt; log SKIPPED / DUPLICATE, increment out_Skipped, move to the next row.
+Quiet hours (07:00-21:00 local) are enforced by the trigger schedule AND
+belt-and-braces here: a run outside quiet hours logs and returns.</sap2010:Annotation.AnnotationText>
+    <Sequence.Variables>
+      <Variable x:TypeArguments="x:Int32" Name="StatusCode" />
+      <Variable x:TypeArguments="x:String" Name="ResponseJson" />
+      <Variable x:TypeArguments="x:String" Name="ErrorCode" />
+      <Variable x:TypeArguments="x:Boolean" Name="Retryable" />
+      <Variable x:TypeArguments="jl:JArray" Name="Due24" />
+      <Variable x:TypeArguments="jl:JArray" Name="Due2" />
+      <Variable x:TypeArguments="jl:JArray" Name="AllDue" />
+      <Variable x:TypeArguments="x:Int32" Name="Idx" Default="[0]" />
+      <Variable x:TypeArguments="jl:JObject" Name="Item" />
+      <Variable x:TypeArguments="x:String" Name="ReminderType" />
+      <Variable x:TypeArguments="x:Int32" Name="ApptId" />
+      <Variable x:TypeArguments="x:String" Name="ApptRef" />
+      <Variable x:TypeArguments="x:String" Name="ApptDateTime" />
+      <Variable x:TypeArguments="x:String" Name="DoctorName" />
+      <Variable x:TypeArguments="x:String" Name="Department" />
+      <Variable x:TypeArguments="x:String" Name="Priority" />
+      <Variable x:TypeArguments="x:String" Name="PatientName" />
+      <Variable x:TypeArguments="x:String" Name="Phone" />
+      <Variable x:TypeArguments="x:String" Name="Email" />
+      <Variable x:TypeArguments="x:Boolean" Name="SmsConsent" />
+      <Variable x:TypeArguments="x:Boolean" Name="EmailConsent" />
+      <Variable x:TypeArguments="x:String" Name="PrefChannel" />
+      <Variable x:TypeArguments="scg:List(x:String)" Name="Channels" />
+      <Variable x:TypeArguments="x:Boolean" Name="AlreadySent" />
+      <Variable x:TypeArguments="x:String" Name="MsgBody" />
+      <Variable x:TypeArguments="x:Boolean" Name="NotifOk" />
+      <Variable x:TypeArguments="x:String" Name="NotifId" />
+      <Variable x:TypeArguments="x:String" Name="NotifError" />
+      <Variable x:TypeArguments="x:Boolean" Name="NotifRetryable" />
+      <Variable x:TypeArguments="jl:JObject" Name="J" />
+      <Variable x:TypeArguments="x:DateTime" Name="Now" />
+      <Variable x:TypeArguments="x:String" Name="NowQs" />
+      <Variable x:TypeArguments="x:String" Name="CurrentChannel" />
+    </Sequence.Variables>
 
-This check is what makes the bot safe to run twice. The trigger can double-fire,
-a run can crash half way; running five times must send exactly what one run sends.</sap2010:Annotation.AnnotationText>
-<ui:Comment Text="TODO(Studio): GET /api/v1/notifications?appointment_id=&amp;type= ; skip if status SENT" sap2010:WorkflowViewState.IdRef="Comment_1" />
-</Sequence>
-<Sequence DisplayName="B. Resolve channel" sap2010:WorkflowViewState.IdRef="Sequence_4">
-<sap2010:Annotation.AnnotationText>Workflows/ResolveChannel.xaml — PURE LOGIC, NO I/O. Unit-testable.
+    <Assign DisplayName="Init counters" sap2010:WorkflowViewState.IdRef="Assign_InitSent">
+      <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Sent]</OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:Int32">[0]</InArgument></Assign.Value>
+    </Assign>
 
-Neither consent                         -&gt; SKIPPED / NO_CONSENT
-preferred_channel = SMS   : SMS, fall back to EMAIL
-preferred_channel = EMAIL : EMAIL, fall back to SMS
-preferred_channel = BOTH  : every available channel
-Phone must match ^\+[1-9]\d{9,14}$ ; email must be present.
-Nothing usable                          -&gt; SKIPPED / NO_CHANNEL
+    <Assign DisplayName="Resolve now" sap2010:WorkflowViewState.IdRef="Assign_Now">
+      <Assign.To><OutArgument x:TypeArguments="x:DateTime">[Now]</OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:DateTime">[If(String.IsNullOrWhiteSpace(in_NowOverride), DateTime.Now, DateTime.Parse(in_NowOverride))]</InArgument></Assign.Value>
+    </Assign>
 
-Escalation: REMINDER_2H for URGENT or HIGH priority ignores the preference and
-sends on every consented channel. Missing an urgent appointment costs more
-than a redundant message.</sap2010:Annotation.AnnotationText>
-<ui:Comment Text="TODO(Studio): Invoke Workflows/ResolveChannel.xaml -&gt; channels list or skip reason" sap2010:WorkflowViewState.IdRef="Comment_3" />
-</Sequence>
-<Sequence DisplayName="C. Render template" sap2010:WorkflowViewState.IdRef="Sequence_6">
-<sap2010:Annotation.AnnotationText>Data/templates.xlsx keyed by template_id, e.g. TPL_REMINDER_24H_EN.
-Placeholders: {PatientName} {DoctorName} {Department} {Date} {Time} {ReferenceNo} {HospitalName}
-SMS body must stay at or under 160 characters after substitution — 161 is two
-billed Twilio segments.</sap2010:Annotation.AnnotationText>
-<ui:Comment Text="TODO(Studio): Invoke Workflows/RenderTemplate.xaml" sap2010:WorkflowViewState.IdRef="Comment_5" />
-</Sequence>
-<TryCatch DisplayName="D. Send with retry" sap2010:WorkflowViewState.IdRef="TryCatch_12">
-<sap2010:Annotation.AnnotationText>Retries happen INSIDE this run, never deferred to the next trigger — the next
-trigger may be 30 minutes away and a 2h reminder cannot wait that long.
+    <Assign DisplayName="Build now= query"
+      sap2010:WorkflowViewState.IdRef="Assign_NowQs">
+      <Assign.To><OutArgument x:TypeArguments="x:String">[NowQs]</OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:String">[If(String.IsNullOrWhiteSpace(in_NowOverride), "", "&amp;now=" &amp; System.Net.WebUtility.UrlEncode(in_NowOverride))]</InArgument></Assign.Value>
+    </Assign>
 
-Attempt 1 at 0s, attempt 2 after 5s, attempt 3 after 15s.
-Retryable:     HTTP 429, 500, 502, 503, 504, network timeout
-Not retryable: Twilio 21211 (bad number), 21608 (unverified on trial),
-               21610 (unsubscribed), SendGrid 400, any 401
+    <ui:LogMessage DisplayName="Log start" Level="Info"
+      Message="[&quot;ReminderBot starting. DryRun=&quot; &amp; in_DryRun.ToString() &amp; &quot; now=&quot; &amp; Now.ToString(&quot;o&quot;)]"
+      sap2010:WorkflowViewState.IdRef="Log_Start" />
 
-Twilio 21610 is the one case this bot writes patient data:
-  PATCH /api/v1/patients/{id} {"sms_consent": false}
+    <If DisplayName="Quiet hours gate"
+      Condition="[Now.Hour &lt; 7 OrElse Now.Hour &gt;= 21]"
+      sap2010:WorkflowViewState.IdRef="If_Quiet">
+      <If.Then>
+        <Sequence sap2010:WorkflowViewState.IdRef="Seq_Quiet">
+          <ui:LogMessage Level="Info"
+            Message="[&quot;Quiet hours (&quot; &amp; Now.Hour.ToString() &amp; &quot;h) — no reminders sent&quot;]"
+            sap2010:WorkflowViewState.IdRef="Log_Quiet" />
+        </Sequence>
+      </If.Then>
+      <If.Else>
+        <Sequence DisplayName="Active window" sap2010:WorkflowViewState.IdRef="Seq_Active">
 
-in_DryRun = True -&gt; do not call the gateway; record provider = DRYRUN.</sap2010:Annotation.AnnotationText>
-<TryCatch.Try>
-<Sequence DisplayName="Send" sap2010:WorkflowViewState.IdRef="Sequence_8">
-<ui:Comment Text="TODO(Studio): Invoke Workflows/SendWithRetry.xaml -&gt; shared/SendSMS.xaml or shared/SendEmail.xaml" sap2010:WorkflowViewState.IdRef="Comment_7" />
-</Sequence>
-</TryCatch.Try>
-<TryCatch.Catches>
-<Catch x:TypeArguments="s:Exception" sap2010:WorkflowViewState.IdRef="Catch_13">
-<ActivityAction x:TypeArguments="s:Exception">
-<ActivityAction.Argument><DelegateInArgument x:TypeArguments="s:Exception" Name="ex" /></ActivityAction.Argument>
-<Sequence DisplayName="Send failed after retries" sap2010:WorkflowViewState.IdRef="Sequence_11">
-<sap2010:Annotation.AnnotationText>Exhausted retries: log a FAILED notification with the gateway error code, raise a
-LOW conflict so someone fixes the contact data, and CONTINUE. One patient's bad
-phone number must not stop the other reminders in this run.</sap2010:Annotation.AnnotationText>
-<ui:LogMessage DisplayName="Log send failure" Level="Warn" Message='["Reminder failed: " &amp; ex.Message]' sap2010:WorkflowViewState.IdRef="LogMessage_9" />
-<ui:Comment Text="TODO(Studio): POST /api/v1/notifications status FAILED ; POST /api/v1/conflicts severity LOW ; continue to next row" sap2010:WorkflowViewState.IdRef="Comment_10" />
-</Sequence>
-</ActivityAction>
-</Catch>
-</TryCatch.Catches>
-</TryCatch>
-<Sequence DisplayName="E. Log outcome" sap2010:WorkflowViewState.IdRef="Sequence_15">
-<ui:Comment Text="TODO(Studio): POST /api/v1/notifications with status, provider, provider_message_id, attempt_no" sap2010:WorkflowViewState.IdRef="Comment_14" />
-</Sequence>
-</Sequence>
-</ActivityAction>
-</ui:ForEachRow.Body>
-</ui:ForEachRow>
-<Sequence DisplayName="5. Run summary" sap2010:WorkflowViewState.IdRef="Sequence_27">
-<sap2010:Annotation.AnnotationText>The summary line is where the Phase 4 report gets its reminder-coverage number.</sap2010:Annotation.AnnotationText>
-<ui:Comment Text="TODO(Studio): Log one JSON line: run_at, window_24h_found, window_2h_found, sent_sms, sent_email, skipped by reason, failed, duration_seconds" sap2010:WorkflowViewState.IdRef="Comment_26" />
-</Sequence>
-</Sequence>
+          <!-- Fetch 24h due -->
+          <InvokeWorkflowFile DisplayName="GET reminders/due?24H"
+            sap2010:WorkflowViewState.IdRef="Invoke_Get24"
+            WorkflowFileName="..\..\shared\HMS_Client.xaml">
+            <InvokeWorkflowFile.Arguments>
+              <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+              <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+              <InArgument x:TypeArguments="x:String" x:Key="in_Method">["GET"]</InArgument>
+              <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/reminders/due?window=24H" &amp; NowQs]</InArgument>
+              <InArgument x:TypeArguments="x:String" x:Key="in_Body">[""]</InArgument>
+              <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[3]</InArgument>
+              <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+              <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+              <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+              <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+            </InvokeWorkflowFile.Arguments>
+          </InvokeWorkflowFile>
+
+          <Assign sap2010:WorkflowViewState.IdRef="Assign_Due24">
+            <Assign.To><OutArgument x:TypeArguments="jl:JArray">[Due24]</OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="jl:JArray">[If(StatusCode &gt;= 200 AndAlso StatusCode &lt; 300, Newtonsoft.Json.Linq.JArray.Parse(ResponseJson), New Newtonsoft.Json.Linq.JArray())]</InArgument></Assign.Value>
+          </Assign>
+
+          <!-- Fetch 2h due -->
+          <InvokeWorkflowFile DisplayName="GET reminders/due?2H"
+            sap2010:WorkflowViewState.IdRef="Invoke_Get2"
+            WorkflowFileName="..\..\shared\HMS_Client.xaml">
+            <InvokeWorkflowFile.Arguments>
+              <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+              <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+              <InArgument x:TypeArguments="x:String" x:Key="in_Method">["GET"]</InArgument>
+              <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/reminders/due?window=2H" &amp; NowQs]</InArgument>
+              <InArgument x:TypeArguments="x:String" x:Key="in_Body">[""]</InArgument>
+              <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[3]</InArgument>
+              <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+              <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+              <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+              <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+            </InvokeWorkflowFile.Arguments>
+          </InvokeWorkflowFile>
+
+          <Assign sap2010:WorkflowViewState.IdRef="Assign_Due2">
+            <Assign.To><OutArgument x:TypeArguments="jl:JArray">[Due2]</OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="jl:JArray">[If(StatusCode &gt;= 200 AndAlso StatusCode &lt; 300, Newtonsoft.Json.Linq.JArray.Parse(ResponseJson), New Newtonsoft.Json.Linq.JArray())]</InArgument></Assign.Value>
+          </Assign>
+
+          <!-- Merge and tag with type -->
+          <ui:InvokeCode DisplayName="Tag with reminder type"
+            sap2010:WorkflowViewState.IdRef="InvokeCode_Merge"
+            Language="VBNet"
+            Code="Dim merged As New Newtonsoft.Json.Linq.JArray()
+For Each t As Newtonsoft.Json.Linq.JToken In in_D24
+    Dim o As Newtonsoft.Json.Linq.JObject = CType(t, Newtonsoft.Json.Linq.JObject)
+    o(&quot;reminder_type&quot;) = &quot;REMINDER_24H&quot;
+    merged.Add(o)
+Next
+For Each t As Newtonsoft.Json.Linq.JToken In in_D2
+    Dim o As Newtonsoft.Json.Linq.JObject = CType(t, Newtonsoft.Json.Linq.JObject)
+    o(&quot;reminder_type&quot;) = &quot;REMINDER_2H&quot;
+    merged.Add(o)
+Next
+out_All = merged">
+            <ui:InvokeCode.Arguments>
+              <InArgument x:TypeArguments="jl:JArray" x:Key="in_D24">[Due24]</InArgument>
+              <InArgument x:TypeArguments="jl:JArray" x:Key="in_D2">[Due2]</InArgument>
+              <OutArgument x:TypeArguments="jl:JArray" x:Key="out_All">[AllDue]</OutArgument>
+            </ui:InvokeCode.Arguments>
+          </ui:InvokeCode>
+
+          <ui:LogMessage DisplayName="Log due" Level="Info"
+            Message="[&quot;Reminders due: 24H=&quot; &amp; Due24.Count.ToString() &amp; &quot; 2H=&quot; &amp; Due2.Count.ToString()]"
+            sap2010:WorkflowViewState.IdRef="Log_Due" />
+
+          <While DisplayName="For each due"
+            Condition="[Idx &lt; AllDue.Count]"
+            sap2010:WorkflowViewState.IdRef="While_Due">
+            <Sequence sap2010:WorkflowViewState.IdRef="Seq_One">
+
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_Item">
+                <Assign.To><OutArgument x:TypeArguments="jl:JObject">[Item]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="jl:JObject">[CType(AllDue(Idx), Newtonsoft.Json.Linq.JObject)]</InArgument></Assign.Value>
+              </Assign>
+
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_Type">
+                <Assign.To><OutArgument x:TypeArguments="x:String">[ReminderType]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="x:String">[Item("reminder_type").ToString()]</InArgument></Assign.Value>
+              </Assign>
+
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_ApId">
+                <Assign.To><OutArgument x:TypeArguments="x:Int32">[ApptId]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="x:Int32">[Integer.Parse(Item("appointment_id").ToString())]</InArgument></Assign.Value>
+              </Assign>
+
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_ApRef">
+                <Assign.To><OutArgument x:TypeArguments="x:String">[ApptRef]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="x:String">[Item("reference_no").ToString()]</InArgument></Assign.Value>
+              </Assign>
+
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_ApDt">
+                <Assign.To><OutArgument x:TypeArguments="x:String">[ApptDateTime]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="x:String">[Item("appointment_datetime").ToString()]</InArgument></Assign.Value>
+              </Assign>
+
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_ApDoc">
+                <Assign.To><OutArgument x:TypeArguments="x:String">[DoctorName]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="x:String">[If(Item("doctor_name") Is Nothing, "", Item("doctor_name").ToString())]</InArgument></Assign.Value>
+              </Assign>
+
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_ApDept">
+                <Assign.To><OutArgument x:TypeArguments="x:String">[Department]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="x:String">[If(Item("department") Is Nothing, "", Item("department").ToString())]</InArgument></Assign.Value>
+              </Assign>
+
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_ApPrio">
+                <Assign.To><OutArgument x:TypeArguments="x:String">[Priority]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="x:String">[If(Item("priority") Is Nothing, "NORMAL", Item("priority").ToString())]</InArgument></Assign.Value>
+              </Assign>
+
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_PName">
+                <Assign.To><OutArgument x:TypeArguments="x:String">[PatientName]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="x:String">[If(Item("patient_name") Is Nothing, "", Item("patient_name").ToString())]</InArgument></Assign.Value>
+              </Assign>
+
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_Phone">
+                <Assign.To><OutArgument x:TypeArguments="x:String">[Phone]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="x:String">[If(Item("phone") Is Nothing, "", Item("phone").ToString())]</InArgument></Assign.Value>
+              </Assign>
+
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_Email">
+                <Assign.To><OutArgument x:TypeArguments="x:String">[Email]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="x:String">[If(Item("email") Is Nothing, "", Item("email").ToString())]</InArgument></Assign.Value>
+              </Assign>
+
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_Sms">
+                <Assign.To><OutArgument x:TypeArguments="x:Boolean">[SmsConsent]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="x:Boolean">[Item("sms_consent") IsNot Nothing AndAlso Boolean.Parse(Item("sms_consent").ToString())]</InArgument></Assign.Value>
+              </Assign>
+
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_EmC">
+                <Assign.To><OutArgument x:TypeArguments="x:Boolean">[EmailConsent]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="x:Boolean">[Item("email_consent") IsNot Nothing AndAlso Boolean.Parse(Item("email_consent").ToString())]</InArgument></Assign.Value>
+              </Assign>
+
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_Pref">
+                <Assign.To><OutArgument x:TypeArguments="x:String">[PrefChannel]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="x:String">[If(Item("preferred_channel") Is Nothing, "SMS", Item("preferred_channel").ToString())]</InArgument></Assign.Value>
+              </Assign>
+
+              <!-- Idempotency: has a SENT notification of this type already been logged? -->
+              <InvokeWorkflowFile DisplayName="GET existing notifications"
+                sap2010:WorkflowViewState.IdRef="Invoke_GetNotifs"
+                WorkflowFileName="..\..\shared\HMS_Client.xaml">
+                <InvokeWorkflowFile.Arguments>
+                  <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+                  <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+                  <InArgument x:TypeArguments="x:String" x:Key="in_Method">["GET"]</InArgument>
+                  <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/notifications?appointment_id=" &amp; ApptId.ToString() &amp; "&amp;type=" &amp; ReminderType &amp; "&amp;status=SENT"]</InArgument>
+                  <InArgument x:TypeArguments="x:String" x:Key="in_Body">[""]</InArgument>
+                  <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[2]</InArgument>
+                  <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+                  <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+                  <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+                  <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+                </InvokeWorkflowFile.Arguments>
+              </InvokeWorkflowFile>
+
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_Already">
+                <Assign.To><OutArgument x:TypeArguments="x:Boolean">[AlreadySent]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="x:Boolean">[Not String.IsNullOrWhiteSpace(ResponseJson) AndAlso Newtonsoft.Json.Linq.JArray.Parse(ResponseJson).Count &gt; 0]</InArgument></Assign.Value>
+              </Assign>
+
+              <If Condition="[AlreadySent]" sap2010:WorkflowViewState.IdRef="If_Already">
+                <If.Then>
+                  <Sequence sap2010:WorkflowViewState.IdRef="Seq_Already">
+                    <Assign sap2010:WorkflowViewState.IdRef="Assign_IncSkip">
+                      <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Skipped]</OutArgument></Assign.To>
+                      <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Skipped + 1]</InArgument></Assign.Value>
+                    </Assign>
+                    <ui:LogMessage Level="Info"
+                      Message="[&quot;Skip &quot; &amp; ApptRef &amp; &quot;/&quot; &amp; ReminderType &amp; &quot; — already sent&quot;]"
+                      sap2010:WorkflowViewState.IdRef="Log_Skip" />
+                  </Sequence>
+                </If.Then>
+                <If.Else>
+                  <Sequence DisplayName="Resolve channels and send" sap2010:WorkflowViewState.IdRef="Seq_Send">
+                    <ui:InvokeCode DisplayName="Resolve channels"
+                      sap2010:WorkflowViewState.IdRef="InvokeCode_Chan"
+                      Language="VBNet"
+                      Code="Dim result As New System.Collections.Generic.List(Of String)()
+Dim smsOk As Boolean = in_SmsConsent AndAlso Not String.IsNullOrEmpty(in_Phone) AndAlso System.Text.RegularExpressions.Regex.IsMatch(in_Phone, &quot;^\+[1-9]\d{9,14}$&quot;)
+Dim emOk As Boolean = in_EmailConsent AndAlso Not String.IsNullOrEmpty(in_Email) AndAlso in_Email.Contains(&quot;@&quot;)
+
+Dim escalate As Boolean = (in_Type = &quot;REMINDER_2H&quot;) AndAlso (in_Priority = &quot;URGENT&quot; OrElse in_Priority = &quot;HIGH&quot;)
+If escalate Then
+    If smsOk Then result.Add(&quot;SMS&quot;)
+    If emOk Then result.Add(&quot;EMAIL&quot;)
+Else
+    If in_Pref = &quot;SMS&quot; Then
+        If smsOk Then result.Add(&quot;SMS&quot;) ElseIf emOk Then result.Add(&quot;EMAIL&quot;)
+    ElseIf in_Pref = &quot;EMAIL&quot; Then
+        If emOk Then result.Add(&quot;EMAIL&quot;) ElseIf smsOk Then result.Add(&quot;SMS&quot;)
+    ElseIf in_Pref = &quot;BOTH&quot; Then
+        If smsOk Then result.Add(&quot;SMS&quot;)
+        If emOk Then result.Add(&quot;EMAIL&quot;)
+    Else
+        If smsOk Then result.Add(&quot;SMS&quot;) ElseIf emOk Then result.Add(&quot;EMAIL&quot;)
+    End If
+End If
+out_Channels = result">
+                      <ui:InvokeCode.Arguments>
+                        <InArgument x:TypeArguments="x:String" x:Key="in_Type">[ReminderType]</InArgument>
+                        <InArgument x:TypeArguments="x:String" x:Key="in_Priority">[Priority]</InArgument>
+                        <InArgument x:TypeArguments="x:String" x:Key="in_Pref">[PrefChannel]</InArgument>
+                        <InArgument x:TypeArguments="x:Boolean" x:Key="in_SmsConsent">[SmsConsent]</InArgument>
+                        <InArgument x:TypeArguments="x:Boolean" x:Key="in_EmailConsent">[EmailConsent]</InArgument>
+                        <InArgument x:TypeArguments="x:String" x:Key="in_Phone">[Phone]</InArgument>
+                        <InArgument x:TypeArguments="x:String" x:Key="in_Email">[Email]</InArgument>
+                        <OutArgument x:TypeArguments="scg:List(x:String)" x:Key="out_Channels">[Channels]</OutArgument>
+                      </ui:InvokeCode.Arguments>
+                    </ui:InvokeCode>
+
+                    <If Condition="[Channels.Count = 0]" sap2010:WorkflowViewState.IdRef="If_NoChan">
+                      <If.Then>
+                        <Sequence sap2010:WorkflowViewState.IdRef="Seq_NoChan">
+                          <Assign sap2010:WorkflowViewState.IdRef="Assign_SkipNoChan">
+                            <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Skipped]</OutArgument></Assign.To>
+                            <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Skipped + 1]</InArgument></Assign.Value>
+                          </Assign>
+                          <ui:LogMessage Level="Info"
+                            Message="[&quot;Skip &quot; &amp; ApptRef &amp; &quot; — no channel with consent&quot;]"
+                            sap2010:WorkflowViewState.IdRef="Log_NoChan" />
+                        </Sequence>
+                      </If.Then>
+                      <If.Else>
+                        <Sequence sap2010:WorkflowViewState.IdRef="Seq_HasChan">
+                          <Assign sap2010:WorkflowViewState.IdRef="Assign_Body">
+                            <Assign.To><OutArgument x:TypeArguments="x:String">[MsgBody]</OutArgument></Assign.To>
+                            <Assign.Value><InArgument x:TypeArguments="x:String">[in_HospitalName &amp; If(ReminderType = "REMINDER_24H", " reminder (24h): ", " reminder (2h): ") &amp; ApptRef &amp; " with " &amp; DoctorName &amp; " on " &amp; ApptDateTime.Replace("T", " ") &amp; ". Reply STOP to unsubscribe."]</InArgument></Assign.Value>
+                          </Assign>
+
+                          <ForEach x:TypeArguments="x:String" DisplayName="Send on each channel"
+                            Values="[Channels]"
+                            sap2010:WorkflowViewState.IdRef="ForEach_Chan">
+                            <ActivityAction x:TypeArguments="x:String">
+                              <ActivityAction.Argument><DelegateInArgument x:TypeArguments="x:String" Name="ch" /></ActivityAction.Argument>
+                              <Sequence sap2010:WorkflowViewState.IdRef="Seq_SendChan">
+                                <Assign sap2010:WorkflowViewState.IdRef="Assign_CurChan">
+                                  <Assign.To><OutArgument x:TypeArguments="x:String">[CurrentChannel]</OutArgument></Assign.To>
+                                  <Assign.Value><InArgument x:TypeArguments="x:String">[ch]</InArgument></Assign.Value>
+                                </Assign>
+                                <If Condition="[ch = &quot;SMS&quot;]" sap2010:WorkflowViewState.IdRef="If_ChSMS">
+                                  <If.Then>
+                                    <InvokeWorkflowFile
+                                      sap2010:WorkflowViewState.IdRef="Invoke_SMS"
+                                      WorkflowFileName="..\..\shared\SendSMS.xaml">
+                                      <InvokeWorkflowFile.Arguments>
+                                        <InArgument x:TypeArguments="x:String" x:Key="in_To">[Phone]</InArgument>
+                                        <InArgument x:TypeArguments="x:String" x:Key="in_Body">[MsgBody]</InArgument>
+                                        <InArgument x:TypeArguments="x:String" x:Key="in_AccountSid">[in_TwilioSid]</InArgument>
+                                        <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_AuthToken">[in_TwilioAuth]</InArgument>
+                                        <InArgument x:TypeArguments="x:String" x:Key="in_FromNumber">[in_TwilioFrom]</InArgument>
+                                        <InArgument x:TypeArguments="x:Boolean" x:Key="in_DryRun">[in_DryRun]</InArgument>
+                                        <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Success">[NotifOk]</OutArgument>
+                                        <OutArgument x:TypeArguments="x:String" x:Key="out_MessageId">[NotifId]</OutArgument>
+                                        <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[NotifError]</OutArgument>
+                                        <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[NotifRetryable]</OutArgument>
+                                      </InvokeWorkflowFile.Arguments>
+                                    </InvokeWorkflowFile>
+                                  </If.Then>
+                                  <If.Else>
+                                    <InvokeWorkflowFile
+                                      sap2010:WorkflowViewState.IdRef="Invoke_Em"
+                                      WorkflowFileName="..\..\shared\SendEmail.xaml">
+                                      <InvokeWorkflowFile.Arguments>
+                                        <InArgument x:TypeArguments="x:String" x:Key="in_To">[Email]</InArgument>
+                                        <InArgument x:TypeArguments="x:String" x:Key="in_Subject">[in_HospitalName &amp; " reminder — " &amp; ApptRef]</InArgument>
+                                        <InArgument x:TypeArguments="x:String" x:Key="in_HtmlBody">["&lt;p&gt;" &amp; MsgBody &amp; "&lt;/p&gt;"]</InArgument>
+                                        <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_SendGridKey]</InArgument>
+                                        <InArgument x:TypeArguments="x:String" x:Key="in_FromEmail">[in_SendGridFrom]</InArgument>
+                                        <InArgument x:TypeArguments="x:Boolean" x:Key="in_DryRun">[in_DryRun]</InArgument>
+                                        <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Success">[NotifOk]</OutArgument>
+                                        <OutArgument x:TypeArguments="x:String" x:Key="out_MessageId">[NotifId]</OutArgument>
+                                        <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[NotifError]</OutArgument>
+                                        <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[NotifRetryable]</OutArgument>
+                                      </InvokeWorkflowFile.Arguments>
+                                    </InvokeWorkflowFile>
+                                  </If.Else>
+                                </If>
+
+                                <!-- Log the notification -->
+                                <InvokeWorkflowFile DisplayName="POST notification"
+                                  sap2010:WorkflowViewState.IdRef="Invoke_LogN"
+                                  WorkflowFileName="..\..\shared\HMS_Client.xaml">
+                                  <InvokeWorkflowFile.Arguments>
+                                    <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+                                    <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+                                    <InArgument x:TypeArguments="x:String" x:Key="in_Method">["POST"]</InArgument>
+                                    <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/notifications"]</InArgument>
+                                    <InArgument x:TypeArguments="x:String" x:Key="in_Body">[New Newtonsoft.Json.Linq.JObject(New Newtonsoft.Json.Linq.JProperty("appointment_id", ApptId), New Newtonsoft.Json.Linq.JProperty("type", ReminderType), New Newtonsoft.Json.Linq.JProperty("channel", ch), New Newtonsoft.Json.Linq.JProperty("recipient", If(ch = "SMS", Phone, Email)), New Newtonsoft.Json.Linq.JProperty("template_id", If(ReminderType = "REMINDER_24H", "TPL_REMINDER_24H_EN", "TPL_REMINDER_2H_EN")), New Newtonsoft.Json.Linq.JProperty("status", If(NotifOk, "SENT", "FAILED")), New Newtonsoft.Json.Linq.JProperty("provider", If(in_DryRun, "DRYRUN", If(ch = "SMS", "TWILIO", "SENDGRID"))), New Newtonsoft.Json.Linq.JProperty("provider_message_id", NotifId), New Newtonsoft.Json.Linq.JProperty("attempt_no", 1), New Newtonsoft.Json.Linq.JProperty("error_code", NotifError), New Newtonsoft.Json.Linq.JProperty("body_preview", MsgBody.Substring(0, Math.Min(200, MsgBody.Length)))).ToString()]</InArgument>
+                                    <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[2]</InArgument>
+                                    <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[StatusCode]</OutArgument>
+                                    <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
+                                    <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
+                                    <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
+                                  </InvokeWorkflowFile.Arguments>
+                                </InvokeWorkflowFile>
+
+                                <If Condition="[NotifOk]" sap2010:WorkflowViewState.IdRef="If_NotifOk">
+                                  <If.Then>
+                                    <Assign sap2010:WorkflowViewState.IdRef="Assign_IncOk">
+                                      <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Sent]</OutArgument></Assign.To>
+                                      <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Sent + 1]</InArgument></Assign.Value>
+                                    </Assign>
+                                  </If.Then>
+                                  <If.Else>
+                                    <Assign sap2010:WorkflowViewState.IdRef="Assign_IncFail">
+                                      <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Failed]</OutArgument></Assign.To>
+                                      <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Failed + 1]</InArgument></Assign.Value>
+                                    </Assign>
+                                  </If.Else>
+                                </If>
+                              </Sequence>
+                            </ActivityAction>
+                          </ForEach>
+                        </Sequence>
+                      </If.Else>
+                    </If>
+                  </Sequence>
+                </If.Else>
+              </If>
+
+              <Assign sap2010:WorkflowViewState.IdRef="Assign_NextIdx">
+                <Assign.To><OutArgument x:TypeArguments="x:Int32">[Idx]</OutArgument></Assign.To>
+                <Assign.Value><InArgument x:TypeArguments="x:Int32">[Idx + 1]</InArgument></Assign.Value>
+              </Assign>
+            </Sequence>
+          </While>
+        </Sequence>
+      </If.Else>
+    </If>
+
+    <ui:LogMessage DisplayName="Log finished" Level="Info"
+      Message="[&quot;ReminderBot finished. Sent=&quot; &amp; out_Sent.ToString() &amp; &quot; Skipped=&quot; &amp; out_Skipped.ToString() &amp; &quot; Failed=&quot; &amp; out_Failed.ToString()]"
+      sap2010:WorkflowViewState.IdRef="Log_End" />
+  </Sequence>
 </Activity>
