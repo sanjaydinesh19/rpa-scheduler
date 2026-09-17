@@ -85,10 +85,10 @@ Any conflict the bot cannot resolve with these rails is ESCALATED to a clerk
       <If.Then>
         <Sequence DisplayName="Detect and enqueue" sap2010:WorkflowViewState.IdRef="Seq_Sweep">
           <!-- Detect double-bookings with raise=true -->
-          <InvokeWorkflowFile DisplayName="GET detect double-bookings"
+          <ui:InvokeWorkflowFile DisplayName="GET detect double-bookings"
             sap2010:WorkflowViewState.IdRef="Invoke_Detect"
             WorkflowFileName="..\..\shared\HMS_Client.xaml">
-            <InvokeWorkflowFile.Arguments>
+            <ui:InvokeWorkflowFile.Arguments>
               <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
               <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
               <InArgument x:TypeArguments="x:String" x:Key="in_Method">["GET"]</InArgument>
@@ -99,8 +99,8 @@ Any conflict the bot cannot resolve with these rails is ESCALATED to a clerk
               <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
               <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
               <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-            </InvokeWorkflowFile.Arguments>
-          </InvokeWorkflowFile>
+            </ui:InvokeWorkflowFile.Arguments>
+          </ui:InvokeWorkflowFile>
 
           <Assign sap2010:WorkflowViewState.IdRef="Assign_DetCount">
             <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Detected]</OutArgument></Assign.To>
@@ -114,10 +114,10 @@ Any conflict the bot cannot resolve with these rails is ESCALATED to a clerk
       </If.Then>
       <If.Else>
         <Sequence DisplayName="Queue mode - resolve" sap2010:WorkflowViewState.IdRef="Seq_Queue">
-          <InvokeWorkflowFile DisplayName="GET open conflicts"
+          <ui:InvokeWorkflowFile DisplayName="GET open conflicts"
             sap2010:WorkflowViewState.IdRef="Invoke_GetOpen"
             WorkflowFileName="..\..\shared\HMS_Client.xaml">
-            <InvokeWorkflowFile.Arguments>
+            <ui:InvokeWorkflowFile.Arguments>
               <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
               <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
               <InArgument x:TypeArguments="x:String" x:Key="in_Method">["GET"]</InArgument>
@@ -128,8 +128,8 @@ Any conflict the bot cannot resolve with these rails is ESCALATED to a clerk
               <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
               <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
               <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-            </InvokeWorkflowFile.Arguments>
-          </InvokeWorkflowFile>
+            </ui:InvokeWorkflowFile.Arguments>
+          </ui:InvokeWorkflowFile>
 
           <Assign sap2010:WorkflowViewState.IdRef="Assign_ConfList">
             <Assign.To><OutArgument x:TypeArguments="jl:JArray">[Conflicts]</OutArgument></Assign.To>
@@ -182,10 +182,10 @@ Any conflict the bot cannot resolve with these rails is ESCALATED to a clerk
                     sap2010:WorkflowViewState.IdRef="Switch_Type">
                     <Switch.Default>
                       <Sequence sap2010:WorkflowViewState.IdRef="Seq_DefEsc">
-                        <InvokeWorkflowFile DisplayName="PATCH escalate default"
+                        <ui:InvokeWorkflowFile DisplayName="PATCH escalate default"
                           sap2010:WorkflowViewState.IdRef="Invoke_EscDef"
                           WorkflowFileName="..\..\shared\HMS_Client.xaml">
-                          <InvokeWorkflowFile.Arguments>
+                          <ui:InvokeWorkflowFile.Arguments>
                             <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
                             <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
                             <InArgument x:TypeArguments="x:String" x:Key="in_Method">["PATCH"]</InArgument>
@@ -196,8 +196,8 @@ Any conflict the bot cannot resolve with these rails is ESCALATED to a clerk
                             <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
                             <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
                             <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-                          </InvokeWorkflowFile.Arguments>
-                        </InvokeWorkflowFile>
+                          </ui:InvokeWorkflowFile.Arguments>
+                        </ui:InvokeWorkflowFile>
                         <Assign sap2010:WorkflowViewState.IdRef="Assign_EscInc">
                           <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Escalated]</OutArgument></Assign.To>
                           <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Escalated + 1]</InArgument></Assign.Value>
@@ -210,10 +210,10 @@ Any conflict the bot cannot resolve with these rails is ESCALATED to a clerk
                       <If Condition="[RelatedApptId = 0]" sap2010:WorkflowViewState.IdRef="If_DB_NoRel">
                         <If.Then>
                           <Sequence sap2010:WorkflowViewState.IdRef="Seq_DBEsc">
-                            <InvokeWorkflowFile DisplayName="PATCH escalate DB(no related)"
+                            <ui:InvokeWorkflowFile DisplayName="PATCH escalate DB(no related)"
                               sap2010:WorkflowViewState.IdRef="Invoke_DBEsc"
                               WorkflowFileName="..\..\shared\HMS_Client.xaml">
-                              <InvokeWorkflowFile.Arguments>
+                              <ui:InvokeWorkflowFile.Arguments>
                                 <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
                                 <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
                                 <InArgument x:TypeArguments="x:String" x:Key="in_Method">["PATCH"]</InArgument>
@@ -224,8 +224,8 @@ Any conflict the bot cannot resolve with these rails is ESCALATED to a clerk
                                 <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
                                 <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
                                 <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-                              </InvokeWorkflowFile.Arguments>
-                            </InvokeWorkflowFile>
+                              </ui:InvokeWorkflowFile.Arguments>
+                            </ui:InvokeWorkflowFile>
                             <Assign sap2010:WorkflowViewState.IdRef="Assign_DBEscInc">
                               <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Escalated]</OutArgument></Assign.To>
                               <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Escalated + 1]</InArgument></Assign.Value>
@@ -234,10 +234,10 @@ Any conflict the bot cannot resolve with these rails is ESCALATED to a clerk
                         </If.Then>
                         <If.Else>
                           <Sequence DisplayName="Cancel the later-booked appt" sap2010:WorkflowViewState.IdRef="Seq_DBCancel">
-                            <InvokeWorkflowFile DisplayName="POST cancel related"
+                            <ui:InvokeWorkflowFile DisplayName="POST cancel related"
                               sap2010:WorkflowViewState.IdRef="Invoke_Cancel"
                               WorkflowFileName="..\..\shared\HMS_Client.xaml">
-                              <InvokeWorkflowFile.Arguments>
+                              <ui:InvokeWorkflowFile.Arguments>
                                 <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
                                 <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
                                 <InArgument x:TypeArguments="x:String" x:Key="in_Method">["POST"]</InArgument>
@@ -248,17 +248,17 @@ Any conflict the bot cannot resolve with these rails is ESCALATED to a clerk
                                 <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
                                 <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
                                 <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-                              </InvokeWorkflowFile.Arguments>
-                            </InvokeWorkflowFile>
+                              </ui:InvokeWorkflowFile.Arguments>
+                            </ui:InvokeWorkflowFile>
 
                             <If Condition="[StatusCode &gt;= 200 AndAlso StatusCode &lt; 300]"
                               sap2010:WorkflowViewState.IdRef="If_CancelOk">
                               <If.Then>
                                 <Sequence sap2010:WorkflowViewState.IdRef="Seq_DBRes">
-                                  <InvokeWorkflowFile DisplayName="PATCH resolve DB"
+                                  <ui:InvokeWorkflowFile DisplayName="PATCH resolve DB"
                                     sap2010:WorkflowViewState.IdRef="Invoke_DBRes"
                                     WorkflowFileName="..\..\shared\HMS_Client.xaml">
-                                    <InvokeWorkflowFile.Arguments>
+                                    <ui:InvokeWorkflowFile.Arguments>
                                       <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
                                       <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
                                       <InArgument x:TypeArguments="x:String" x:Key="in_Method">["PATCH"]</InArgument>
@@ -269,8 +269,8 @@ Any conflict the bot cannot resolve with these rails is ESCALATED to a clerk
                                       <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
                                       <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
                                       <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-                                    </InvokeWorkflowFile.Arguments>
-                                  </InvokeWorkflowFile>
+                                    </ui:InvokeWorkflowFile.Arguments>
+                                  </ui:InvokeWorkflowFile>
                                   <Assign sap2010:WorkflowViewState.IdRef="Assign_DBResInc">
                                     <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Resolved]</OutArgument></Assign.To>
                                     <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Resolved + 1]</InArgument></Assign.Value>
@@ -279,10 +279,10 @@ Any conflict the bot cannot resolve with these rails is ESCALATED to a clerk
                               </If.Then>
                               <If.Else>
                                 <Sequence sap2010:WorkflowViewState.IdRef="Seq_DBEscFail">
-                                  <InvokeWorkflowFile DisplayName="PATCH escalate DB fail"
+                                  <ui:InvokeWorkflowFile DisplayName="PATCH escalate DB fail"
                                     sap2010:WorkflowViewState.IdRef="Invoke_DBEscFail"
                                     WorkflowFileName="..\..\shared\HMS_Client.xaml">
-                                    <InvokeWorkflowFile.Arguments>
+                                    <ui:InvokeWorkflowFile.Arguments>
                                       <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
                                       <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
                                       <InArgument x:TypeArguments="x:String" x:Key="in_Method">["PATCH"]</InArgument>
@@ -293,8 +293,8 @@ Any conflict the bot cannot resolve with these rails is ESCALATED to a clerk
                                       <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
                                       <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
                                       <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-                                    </InvokeWorkflowFile.Arguments>
-                                  </InvokeWorkflowFile>
+                                    </ui:InvokeWorkflowFile.Arguments>
+                                  </ui:InvokeWorkflowFile>
                                   <Assign sap2010:WorkflowViewState.IdRef="Assign_DBFailInc">
                                     <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Escalated]</OutArgument></Assign.To>
                                     <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Escalated + 1]</InArgument></Assign.Value>
@@ -309,10 +309,10 @@ Any conflict the bot cannot resolve with these rails is ESCALATED to a clerk
 
                     <!-- CANCELLATION_CASCADE: no action needed — cancel already freed the slot -->
                     <Sequence x:Key="CANCELLATION_CASCADE" sap2010:WorkflowViewState.IdRef="Seq_CC">
-                      <InvokeWorkflowFile DisplayName="PATCH resolve cascade"
+                      <ui:InvokeWorkflowFile DisplayName="PATCH resolve cascade"
                         sap2010:WorkflowViewState.IdRef="Invoke_CCRes"
                         WorkflowFileName="..\..\shared\HMS_Client.xaml">
-                        <InvokeWorkflowFile.Arguments>
+                        <ui:InvokeWorkflowFile.Arguments>
                           <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
                           <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
                           <InArgument x:TypeArguments="x:String" x:Key="in_Method">["PATCH"]</InArgument>
@@ -323,8 +323,8 @@ Any conflict the bot cannot resolve with these rails is ESCALATED to a clerk
                           <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
                           <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
                           <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-                        </InvokeWorkflowFile.Arguments>
-                      </InvokeWorkflowFile>
+                        </ui:InvokeWorkflowFile.Arguments>
+                      </ui:InvokeWorkflowFile>
                       <Assign sap2010:WorkflowViewState.IdRef="Assign_CCInc">
                         <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Resolved]</OutArgument></Assign.To>
                         <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Resolved + 1]</InArgument></Assign.Value>
@@ -333,10 +333,10 @@ Any conflict the bot cannot resolve with these rails is ESCALATED to a clerk
 
                     <!-- DOCTOR_UNAVAILABLE: escalate — needs clerk to reassign patients (safety rail: URGENT never auto-moved) -->
                     <Sequence x:Key="DOCTOR_UNAVAILABLE" sap2010:WorkflowViewState.IdRef="Seq_DU">
-                      <InvokeWorkflowFile DisplayName="PATCH escalate absence"
+                      <ui:InvokeWorkflowFile DisplayName="PATCH escalate absence"
                         sap2010:WorkflowViewState.IdRef="Invoke_DUEsc"
                         WorkflowFileName="..\..\shared\HMS_Client.xaml">
-                        <InvokeWorkflowFile.Arguments>
+                        <ui:InvokeWorkflowFile.Arguments>
                           <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
                           <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
                           <InArgument x:TypeArguments="x:String" x:Key="in_Method">["PATCH"]</InArgument>
@@ -347,8 +347,8 @@ Any conflict the bot cannot resolve with these rails is ESCALATED to a clerk
                           <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
                           <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
                           <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-                        </InvokeWorkflowFile.Arguments>
-                      </InvokeWorkflowFile>
+                        </ui:InvokeWorkflowFile.Arguments>
+                      </ui:InvokeWorkflowFile>
                       <Assign sap2010:WorkflowViewState.IdRef="Assign_DUInc">
                         <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Escalated]</OutArgument></Assign.To>
                         <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Escalated + 1]</InArgument></Assign.Value>
@@ -357,10 +357,10 @@ Any conflict the bot cannot resolve with these rails is ESCALATED to a clerk
 
                     <!-- EXCEL_MISMATCH: escalate — human runs excel_mirror.py reconcile -->
                     <Sequence x:Key="EXCEL_MISMATCH" sap2010:WorkflowViewState.IdRef="Seq_EM">
-                      <InvokeWorkflowFile DisplayName="PATCH escalate excel"
+                      <ui:InvokeWorkflowFile DisplayName="PATCH escalate excel"
                         sap2010:WorkflowViewState.IdRef="Invoke_EMEsc"
                         WorkflowFileName="..\..\shared\HMS_Client.xaml">
-                        <InvokeWorkflowFile.Arguments>
+                        <ui:InvokeWorkflowFile.Arguments>
                           <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
                           <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
                           <InArgument x:TypeArguments="x:String" x:Key="in_Method">["PATCH"]</InArgument>
@@ -371,8 +371,8 @@ Any conflict the bot cannot resolve with these rails is ESCALATED to a clerk
                           <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
                           <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
                           <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-                        </InvokeWorkflowFile.Arguments>
-                      </InvokeWorkflowFile>
+                        </ui:InvokeWorkflowFile.Arguments>
+                      </ui:InvokeWorkflowFile>
                       <Assign sap2010:WorkflowViewState.IdRef="Assign_EMInc">
                         <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Escalated]</OutArgument></Assign.To>
                         <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Escalated + 1]</InArgument></Assign.Value>
