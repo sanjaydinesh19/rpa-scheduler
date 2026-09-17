@@ -327,14 +327,15 @@ def reminder_run(cli: HmsClient, now: datetime | None = None, dry_run: bool = Tr
                 skipped += 1
                 continue
 
+            pat = item.get("patient") or {}
             channels = resolve_channels(
                 rtype,
                 item.get("priority", "NORMAL"),
-                item.get("preferred_channel", "SMS"),
-                bool(item.get("sms_consent")),
-                bool(item.get("email_consent")),
-                item.get("phone", ""),
-                item.get("email", "") or "",
+                pat.get("preferred_channel", "SMS"),
+                bool(pat.get("sms_consent")),
+                bool(pat.get("email_consent")),
+                pat.get("phone", "") or "",
+                pat.get("email", "") or "",
             )
             if not channels:
                 skipped += 1
@@ -346,7 +347,7 @@ def reminder_run(cli: HmsClient, now: datetime | None = None, dry_run: bool = Tr
                     "appointment_id": item["appointment_id"],
                     "type": rtype,
                     "channel": ch,
-                    "recipient": item["phone"] if ch == "SMS" else item["email"],
+                    "recipient": pat["phone"] if ch == "SMS" else pat["email"],
                     "template_id": f"TPL_{rtype}_EN",
                     "status": "SENT",
                     "provider": "DRYRUN" if dry_run else ("TWILIO" if ch == "SMS" else "SENDGRID"),
