@@ -1,0 +1,185 @@
+<Activity mc:Ignorable="sap sap2010" x:Class="AllocateSlot"
+ xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+ xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+ xmlns:s="clr-namespace:System;assembly=System.Private.CoreLib"
+ xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
+ xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
+ xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib"
+ xmlns:sd="clr-namespace:System.Data;assembly=System.Data.Common"
+ xmlns:ui="http://schemas.uipath.com/workflow/activities"
+ xmlns:jl="clr-namespace:Newtonsoft.Json.Linq;assembly=Newtonsoft.Json"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <x:Members>
+    <x:Property Name="in_Slots" Type="InArgument(jl:JArray)" />
+    <x:Property Name="in_ExcludedSlotIds" Type="InArgument(scg:List(x:Int32))" />
+    <x:Property Name="in_Priority" Type="InArgument(x:String)" />
+    <x:Property Name="in_PreferredDoctorId" Type="InArgument(x:Int32)" />
+    <x:Property Name="in_TimeBand" Type="InArgument(x:String)" />
+    <x:Property Name="out_SelectedSlot" Type="OutArgument(jl:JObject)" />
+    <x:Property Name="out_SelectedSlotId" Type="OutArgument(x:Int32)" />
+    <x:Property Name="out_SelectedSlotVersion" Type="OutArgument(x:Int32)" />
+    <x:Property Name="out_AllocationPass" Type="OutArgument(x:Int32)" />
+  </x:Members>
+  <sap2010:ExpressionActivityEditor.ExpressionActivityEditor>VisualBasic</sap2010:ExpressionActivityEditor.ExpressionActivityEditor>
+  <TextExpression.NamespacesForImplementation>
+    <scg:List x:TypeArguments="x:String" Capacity="8">
+      <x:String>System</x:String>
+      <x:String>System.Collections.Generic</x:String>
+      <x:String>System.Data</x:String>
+      <x:String>System.Linq</x:String>
+      <x:String>UiPath.Core</x:String>
+      <x:String>UiPath.Core.Activities</x:String>
+      <x:String>Newtonsoft.Json.Linq</x:String>
+    </scg:List>
+  </TextExpression.NamespacesForImplementation>
+  <TextExpression.ReferencesForImplementation>
+    <scg:List x:TypeArguments="AssemblyReference" Capacity="8">
+      <AssemblyReference>System.Linq</AssemblyReference>
+      <AssemblyReference>UiPath.System.Activities</AssemblyReference>
+      <AssemblyReference>Newtonsoft.Json</AssemblyReference>
+    </scg:List>
+  </TextExpression.ReferencesForImplementation>
+
+  <Sequence DisplayName="Allocate Slot" sap2010:WorkflowViewState.IdRef="Seq_Root">
+    <sap2010:Annotation.AnnotationText>Workflows/AllocateSlot.xaml — pure logic, no HTTP, no UI.
+
+Four-pass allocation from docs/phase2/bot_scheduling.md §4:
+  1. Preferred doctor + preferred time band
+  2. Preferred doctor, any time
+  3. Any doctor in department + preferred time band
+  4. Any doctor, any time (first-fit fallback)
+
+Scoring within a pass:
+  weight_earliest       * (30 - daysOut)
+  + weight_urgency_boost * (30 - daysOut) if URGENT
+  + weight_time_band_match if the band matches
+  + weight_preferred_doctor if the doctor matches
+Ties break by Date ASC, StartTime ASC, SlotId ASC — deterministic across runs.
+
+Returns SlotId = 0 if no candidate in any pass. Caller raises NO_SLOT_AVAILABLE.</sap2010:Annotation.AnnotationText>
+    <Sequence.Variables>
+      <Variable x:TypeArguments="x:String" Name="Code" Default="[BuildAllocationCode()]" />
+    </Sequence.Variables>
+
+    <Assign DisplayName="Default outputs" sap2010:WorkflowViewState.IdRef="Assign_Defaults">
+      <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_SelectedSlotId]</OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:Int32">[0]</InArgument></Assign.Value>
+    </Assign>
+
+    <ui:InvokeCode DisplayName="Score and pick"
+      sap2010:WorkflowViewState.IdRef="InvokeCode_Alloc"
+      Language="VBNet"
+      Code="Dim now As DateTime = DateTime.Now
+Dim excluded As New System.Collections.Generic.HashSet(Of Integer)()
+If in_ExcludedSlotIds IsNot Nothing Then
+    For Each x As Integer In in_ExcludedSlotIds
+        excluded.Add(x)
+    Next
+End If
+
+Dim wEarliest As Double = 1.0
+Dim wUrg As Double = 2.0
+Dim wBand As Double = 0.8
+Dim wDoc As Double = 1.5
+
+Dim bandLo As Integer = 0
+Dim bandHi As Integer = 24 * 60
+If in_TimeBand IsNot Nothing Then
+    Select Case in_TimeBand.ToUpper()
+        Case &quot;MORNING&quot;
+            bandLo = 9 * 60 : bandHi = 12 * 60
+        Case &quot;AFTERNOON&quot;
+            bandLo = 12 * 60 : bandHi = 17 * 60
+    End Select
+End If
+
+Dim bestSlot As Newtonsoft.Json.Linq.JObject = Nothing
+Dim bestScore As Double = Double.NegativeInfinity
+Dim bestDate As DateTime = DateTime.MaxValue
+Dim bestStart As Integer = Integer.MaxValue
+Dim bestId As Integer = Integer.MaxValue
+Dim bestPass As Integer = 0
+
+For pass As Integer = 1 To 4
+    Dim requireDoc As Boolean = (pass = 1 OrElse pass = 2) AndAlso in_PreferredDoctorId &gt; 0
+    Dim requireBand As Boolean = (pass = 1 OrElse pass = 3) AndAlso in_TimeBand IsNot Nothing AndAlso in_TimeBand.ToUpper() &lt;&gt; &quot;ANY&quot;
+
+    For Each tok As Newtonsoft.Json.Linq.JToken In in_Slots
+        Dim s As Newtonsoft.Json.Linq.JObject = CType(tok, Newtonsoft.Json.Linq.JObject)
+        Dim slotId As Integer = Integer.Parse(s(&quot;slot_id&quot;).ToString())
+        If excluded.Contains(slotId) Then Continue For
+        If s(&quot;status&quot;).ToString() &lt;&gt; &quot;AVAILABLE&quot; Then Continue For
+
+        Dim slotDate As DateTime = DateTime.Parse(s(&quot;slot_date&quot;).ToString())
+        Dim startStr As String = s(&quot;start_time&quot;).ToString()
+        Dim parts() As String = startStr.Split(&quot;:&quot;c)
+        Dim startMin As Integer = Integer.Parse(parts(0)) * 60 + Integer.Parse(parts(1))
+        Dim slotStart As DateTime = slotDate.AddMinutes(startMin)
+
+        If slotStart &lt;= now.AddHours(2) Then Continue For
+
+        Dim doctorId As Integer = Integer.Parse(s(&quot;doctor_id&quot;).ToString())
+        If requireDoc AndAlso doctorId &lt;&gt; in_PreferredDoctorId Then Continue For
+
+        Dim inBand As Boolean = (startMin &gt;= bandLo AndAlso startMin &lt;= bandHi)
+        If requireBand AndAlso Not inBand Then Continue For
+
+        Dim daysOut As Double = (slotDate - now.Date).TotalDays
+        Dim score As Double = wEarliest * (30.0 - daysOut)
+        If in_Priority = &quot;URGENT&quot; Then score += wUrg * (30.0 - daysOut)
+        If inBand Then score += wBand
+        If in_PreferredDoctorId &gt; 0 AndAlso doctorId = in_PreferredDoctorId Then score += wDoc
+
+        Dim better As Boolean = False
+        If score &gt; bestScore Then
+            better = True
+        ElseIf score = bestScore Then
+            If slotDate &lt; bestDate Then
+                better = True
+            ElseIf slotDate = bestDate AndAlso startMin &lt; bestStart Then
+                better = True
+            ElseIf slotDate = bestDate AndAlso startMin = bestStart AndAlso slotId &lt; bestId Then
+                better = True
+            End If
+        End If
+
+        If better Then
+            bestSlot = s
+            bestScore = score
+            bestDate = slotDate
+            bestStart = startMin
+            bestId = slotId
+            bestPass = pass
+        End If
+    Next
+
+    If bestSlot IsNot Nothing Then Exit For
+Next
+
+If bestSlot IsNot Nothing Then
+    out_SelectedSlot = bestSlot
+    out_SelectedSlotId = Integer.Parse(bestSlot(&quot;slot_id&quot;).ToString())
+    out_SelectedSlotVersion = Integer.Parse(bestSlot(&quot;version&quot;).ToString())
+    out_AllocationPass = bestPass
+Else
+    out_SelectedSlotId = 0
+    out_AllocationPass = 0
+End If">
+      <ui:InvokeCode.Arguments>
+        <InArgument x:TypeArguments="jl:JArray" x:Key="in_Slots">[in_Slots]</InArgument>
+        <InArgument x:TypeArguments="scg:List(x:Int32)" x:Key="in_ExcludedSlotIds">[in_ExcludedSlotIds]</InArgument>
+        <InArgument x:TypeArguments="x:String" x:Key="in_Priority">[in_Priority]</InArgument>
+        <InArgument x:TypeArguments="x:Int32" x:Key="in_PreferredDoctorId">[in_PreferredDoctorId]</InArgument>
+        <InArgument x:TypeArguments="x:String" x:Key="in_TimeBand">[in_TimeBand]</InArgument>
+        <OutArgument x:TypeArguments="jl:JObject" x:Key="out_SelectedSlot">[out_SelectedSlot]</OutArgument>
+        <OutArgument x:TypeArguments="x:Int32" x:Key="out_SelectedSlotId">[out_SelectedSlotId]</OutArgument>
+        <OutArgument x:TypeArguments="x:Int32" x:Key="out_SelectedSlotVersion">[out_SelectedSlotVersion]</OutArgument>
+        <OutArgument x:TypeArguments="x:Int32" x:Key="out_AllocationPass">[out_AllocationPass]</OutArgument>
+      </ui:InvokeCode.Arguments>
+    </ui:InvokeCode>
+
+    <ui:LogMessage DisplayName="Log allocation" Level="Info"
+      Message="[&quot;Allocated slot_id=&quot; &amp; out_SelectedSlotId.ToString() &amp; &quot; pass=&quot; &amp; out_AllocationPass.ToString()]"
+      sap2010:WorkflowViewState.IdRef="Log_Alloc" />
+  </Sequence>
+</Activity>
