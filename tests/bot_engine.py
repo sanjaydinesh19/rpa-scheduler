@@ -196,7 +196,10 @@ def process_booking_request(cli: HmsClient, req: dict, max_attempts: int = 3) ->
             excluded.add(slot_id)
             continue
         try:
-            # Book
+            # Book. No expected_version: lock() bumps it, so the value we read
+            # at allocate time is always stale by the time we get here. The lock
+            # itself + slot.status check + the partial unique index cover the
+            # three race guards.
             r = cli.request("POST", "/appointments", json={
                 "patient_id": patient["patient_id"],
                 "slot_id": slot_id,
@@ -204,7 +207,6 @@ def process_booking_request(cli: HmsClient, req: dict, max_attempts: int = 3) ->
                 "reason": req.get("Reason") or "",
                 "is_follow_up": bool(req.get("IsFollowUp")),
                 "queue_item_ref": req["RequestId"],
-                "expected_version": int(slot["version"]),
                 "booked_by": "SchedulingBot",
             })
             if r.status_code < 300:
