@@ -4,11 +4,8 @@
   "description": "Consumes BookingRequests queue items, allocates the best slot per rules.yaml, books through the Mock HMS UI, mirrors to Excel and sends a confirmation.",
   "main": "Main.xaml",
   "dependencies": {
-    "UiPath.Excel.Activities": "[2.23.4]",
-    "UiPath.Mail.Activities": "[1.23.4]",
     "UiPath.System.Activities": "[23.10.3]",
-    "UiPath.UIAutomation.Activities": "[23.10.5]",
-    "UiPath.WebAPI.Activities": "[1.17.0]"
+    "UiPath.WebAPI.Activities": "[1.18.0]"
   },
   "webServices": [],
   "entitiesStores": [],
