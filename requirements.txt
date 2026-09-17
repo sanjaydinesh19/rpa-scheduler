@@ -1,0 +1,4 @@
+# Aggregate for one-shot install:
+#     pip install -r requirements.txt
+-r mock_hms/requirements.txt
+-r tests/requirements.txt
