@@ -211,11 +211,10 @@ def process_booking_request(cli: HmsClient, req: dict, max_attempts: int = 3) ->
             })
             if r.status_code < 300:
                 appt = r.json()
-                # Mark synced-to-excel (real bot appends to xlsx here too)
-                cli.request(
-                    "PATCH", f"/appointments/{appt['appointment_id']}",
-                    json={"synced_to_excel_at": True},
-                )
+                # Excel mirroring is done out-of-band by tools/excel_mirror.py
+                # sync, to match what SchedulingBot/Main.xaml does now — Studio
+                # 26's Modern Excel activities aren't in a stable-enough pack
+                # to hard-pin the bot on.
                 # Log confirmation notification
                 channel = "SMS" if patient["sms_consent"] else (
                     "EMAIL" if patient["email_consent"] and patient["email"] else "NONE"
