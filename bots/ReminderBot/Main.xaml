@@ -245,32 +245,32 @@ out_All = merged">
 
               <Assign sap2010:WorkflowViewState.IdRef="Assign_PName">
                 <Assign.To><OutArgument x:TypeArguments="x:String">[PatientName]</OutArgument></Assign.To>
-                <Assign.Value><InArgument x:TypeArguments="x:String">[If(Item("patient_name") Is Nothing, "", Item("patient_name").ToString())]</InArgument></Assign.Value>
+                <Assign.Value><InArgument x:TypeArguments="x:String">[If(Item("patient") IsNot Nothing AndAlso Item("patient")("full_name") IsNot Nothing, Item("patient")("full_name").ToString(), "")]</InArgument></Assign.Value>
               </Assign>
 
               <Assign sap2010:WorkflowViewState.IdRef="Assign_Phone">
                 <Assign.To><OutArgument x:TypeArguments="x:String">[Phone]</OutArgument></Assign.To>
-                <Assign.Value><InArgument x:TypeArguments="x:String">[If(Item("phone") Is Nothing, "", Item("phone").ToString())]</InArgument></Assign.Value>
+                <Assign.Value><InArgument x:TypeArguments="x:String">[If(Item("patient") IsNot Nothing AndAlso Item("patient")("phone") IsNot Nothing, Item("patient")("phone").ToString(), "")]</InArgument></Assign.Value>
               </Assign>
 
               <Assign sap2010:WorkflowViewState.IdRef="Assign_Email">
                 <Assign.To><OutArgument x:TypeArguments="x:String">[Email]</OutArgument></Assign.To>
-                <Assign.Value><InArgument x:TypeArguments="x:String">[If(Item("email") Is Nothing, "", Item("email").ToString())]</InArgument></Assign.Value>
+                <Assign.Value><InArgument x:TypeArguments="x:String">[If(Item("patient") IsNot Nothing AndAlso Item("patient")("email") IsNot Nothing AndAlso Item("patient")("email").Type &lt;&gt; Newtonsoft.Json.Linq.JTokenType.Null, Item("patient")("email").ToString(), "")]</InArgument></Assign.Value>
               </Assign>
 
               <Assign sap2010:WorkflowViewState.IdRef="Assign_Sms">
                 <Assign.To><OutArgument x:TypeArguments="x:Boolean">[SmsConsent]</OutArgument></Assign.To>
-                <Assign.Value><InArgument x:TypeArguments="x:Boolean">[Item("sms_consent") IsNot Nothing AndAlso Boolean.Parse(Item("sms_consent").ToString())]</InArgument></Assign.Value>
+                <Assign.Value><InArgument x:TypeArguments="x:Boolean">[Item("patient") IsNot Nothing AndAlso Item("patient")("sms_consent") IsNot Nothing AndAlso Boolean.Parse(Item("patient")("sms_consent").ToString())]</InArgument></Assign.Value>
               </Assign>
 
               <Assign sap2010:WorkflowViewState.IdRef="Assign_EmC">
                 <Assign.To><OutArgument x:TypeArguments="x:Boolean">[EmailConsent]</OutArgument></Assign.To>
-                <Assign.Value><InArgument x:TypeArguments="x:Boolean">[Item("email_consent") IsNot Nothing AndAlso Boolean.Parse(Item("email_consent").ToString())]</InArgument></Assign.Value>
+                <Assign.Value><InArgument x:TypeArguments="x:Boolean">[Item("patient") IsNot Nothing AndAlso Item("patient")("email_consent") IsNot Nothing AndAlso Boolean.Parse(Item("patient")("email_consent").ToString())]</InArgument></Assign.Value>
               </Assign>
 
               <Assign sap2010:WorkflowViewState.IdRef="Assign_Pref">
                 <Assign.To><OutArgument x:TypeArguments="x:String">[PrefChannel]</OutArgument></Assign.To>
-                <Assign.Value><InArgument x:TypeArguments="x:String">[If(Item("preferred_channel") Is Nothing, "SMS", Item("preferred_channel").ToString())]</InArgument></Assign.Value>
+                <Assign.Value><InArgument x:TypeArguments="x:String">[If(Item("patient") IsNot Nothing AndAlso Item("patient")("preferred_channel") IsNot Nothing, Item("patient")("preferred_channel").ToString(), "SMS")]</InArgument></Assign.Value>
               </Assign>
 
               <!-- Idempotency: has a SENT notification of this type already been logged? -->
