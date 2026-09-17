@@ -145,14 +145,11 @@ Live:     POST to /2010-04-01/Accounts/{sid}/Messages.json with Basic auth and
                   Body="[BodyForm]"
                   BodyFormat="application/x-www-form-urlencoded"
                   ContinueOnError="True"
-                  ResponseContent="[Response]"
+                  Result="[Response]"
                   StatusCode="[StatusCode]"
                   TimeoutMS="30000">
                   <uwa:HttpClient.Headers>
-                    <scg:Dictionary x:TypeArguments="x:String, x:String">
-                      <x:String x:Key="Authorization">[BasicAuth]</x:String>
-                      <x:String x:Key="Accept">application/json</x:String>
-                    </scg:Dictionary>
+                    <InArgument x:TypeArguments="scg:Dictionary(x:String, x:String)">[New Dictionary(Of String, String) From {{"Authorization", BasicAuth}, {"Accept", "application/json"}}]</InArgument>
                   </uwa:HttpClient.Headers>
                 </uwa:HttpClient>
 
