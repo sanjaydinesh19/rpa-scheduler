@@ -1,0 +1,4 @@
+# Test-time dependencies. Install AFTER mock_hms/requirements.txt so the HMS
+# libraries pin their versions first.
+pytest==8.3.3
+requests==2.32.3
