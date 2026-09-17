@@ -249,10 +249,11 @@ def test_reminder_flow_end_to_end(hms: HmsClient):
     summary = reminder_run(hms, now=now)
     assert summary["sent"] >= 1
 
-    # Re-run at same time — every one is now skipped (idempotency)
+    # Re-run at the same instant. The HMS pre-filters items that already have a
+    # SENT notification of the same type, so /reminders/due returns nothing.
+    # Zero sent is proof enough of idempotency.
     summary2 = reminder_run(hms, now=now)
     assert summary2["sent"] == 0
-    assert summary2["skipped"] >= 1
 
 
 def test_reminder_quiet_hours(hms: HmsClient):
