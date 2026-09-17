@@ -126,10 +126,10 @@ belt-and-braces here: a run outside quiet hours logs and returns.</sap2010:Annot
         <Sequence DisplayName="Active window" sap2010:WorkflowViewState.IdRef="Seq_Active">
 
           <!-- Fetch 24h due -->
-          <InvokeWorkflowFile DisplayName="GET reminders/due?24H"
+          <ui:InvokeWorkflowFile DisplayName="GET reminders/due?24H"
             sap2010:WorkflowViewState.IdRef="Invoke_Get24"
             WorkflowFileName="..\..\shared\HMS_Client.xaml">
-            <InvokeWorkflowFile.Arguments>
+            <ui:InvokeWorkflowFile.Arguments>
               <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
               <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
               <InArgument x:TypeArguments="x:String" x:Key="in_Method">["GET"]</InArgument>
@@ -140,8 +140,8 @@ belt-and-braces here: a run outside quiet hours logs and returns.</sap2010:Annot
               <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
               <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
               <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-            </InvokeWorkflowFile.Arguments>
-          </InvokeWorkflowFile>
+            </ui:InvokeWorkflowFile.Arguments>
+          </ui:InvokeWorkflowFile>
 
           <Assign sap2010:WorkflowViewState.IdRef="Assign_Due24">
             <Assign.To><OutArgument x:TypeArguments="jl:JArray">[Due24]</OutArgument></Assign.To>
@@ -149,10 +149,10 @@ belt-and-braces here: a run outside quiet hours logs and returns.</sap2010:Annot
           </Assign>
 
           <!-- Fetch 2h due -->
-          <InvokeWorkflowFile DisplayName="GET reminders/due?2H"
+          <ui:InvokeWorkflowFile DisplayName="GET reminders/due?2H"
             sap2010:WorkflowViewState.IdRef="Invoke_Get2"
             WorkflowFileName="..\..\shared\HMS_Client.xaml">
-            <InvokeWorkflowFile.Arguments>
+            <ui:InvokeWorkflowFile.Arguments>
               <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
               <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
               <InArgument x:TypeArguments="x:String" x:Key="in_Method">["GET"]</InArgument>
@@ -163,8 +163,8 @@ belt-and-braces here: a run outside quiet hours logs and returns.</sap2010:Annot
               <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
               <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
               <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-            </InvokeWorkflowFile.Arguments>
-          </InvokeWorkflowFile>
+            </ui:InvokeWorkflowFile.Arguments>
+          </ui:InvokeWorkflowFile>
 
           <Assign sap2010:WorkflowViewState.IdRef="Assign_Due2">
             <Assign.To><OutArgument x:TypeArguments="jl:JArray">[Due2]</OutArgument></Assign.To>
@@ -274,10 +274,10 @@ out_All = merged">
               </Assign>
 
               <!-- Idempotency: has a SENT notification of this type already been logged? -->
-              <InvokeWorkflowFile DisplayName="GET existing notifications"
+              <ui:InvokeWorkflowFile DisplayName="GET existing notifications"
                 sap2010:WorkflowViewState.IdRef="Invoke_GetNotifs"
                 WorkflowFileName="..\..\shared\HMS_Client.xaml">
-                <InvokeWorkflowFile.Arguments>
+                <ui:InvokeWorkflowFile.Arguments>
                   <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
                   <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
                   <InArgument x:TypeArguments="x:String" x:Key="in_Method">["GET"]</InArgument>
@@ -288,8 +288,8 @@ out_All = merged">
                   <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
                   <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
                   <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-                </InvokeWorkflowFile.Arguments>
-              </InvokeWorkflowFile>
+                </ui:InvokeWorkflowFile.Arguments>
+              </ui:InvokeWorkflowFile>
 
               <Assign sap2010:WorkflowViewState.IdRef="Assign_Already">
                 <Assign.To><OutArgument x:TypeArguments="x:Boolean">[AlreadySent]</OutArgument></Assign.To>
@@ -377,10 +377,10 @@ out_Channels = result">
                                 </Assign>
                                 <If Condition="[ch = &quot;SMS&quot;]" sap2010:WorkflowViewState.IdRef="If_ChSMS">
                                   <If.Then>
-                                    <InvokeWorkflowFile
+                                    <ui:InvokeWorkflowFile
                                       sap2010:WorkflowViewState.IdRef="Invoke_SMS"
                                       WorkflowFileName="..\..\shared\SendSMS.xaml">
-                                      <InvokeWorkflowFile.Arguments>
+                                      <ui:InvokeWorkflowFile.Arguments>
                                         <InArgument x:TypeArguments="x:String" x:Key="in_To">[Phone]</InArgument>
                                         <InArgument x:TypeArguments="x:String" x:Key="in_Body">[MsgBody]</InArgument>
                                         <InArgument x:TypeArguments="x:String" x:Key="in_AccountSid">[in_TwilioSid]</InArgument>
@@ -391,14 +391,14 @@ out_Channels = result">
                                         <OutArgument x:TypeArguments="x:String" x:Key="out_MessageId">[NotifId]</OutArgument>
                                         <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[NotifError]</OutArgument>
                                         <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[NotifRetryable]</OutArgument>
-                                      </InvokeWorkflowFile.Arguments>
-                                    </InvokeWorkflowFile>
+                                      </ui:InvokeWorkflowFile.Arguments>
+                                    </ui:InvokeWorkflowFile>
                                   </If.Then>
                                   <If.Else>
-                                    <InvokeWorkflowFile
+                                    <ui:InvokeWorkflowFile
                                       sap2010:WorkflowViewState.IdRef="Invoke_Em"
                                       WorkflowFileName="..\..\shared\SendEmail.xaml">
-                                      <InvokeWorkflowFile.Arguments>
+                                      <ui:InvokeWorkflowFile.Arguments>
                                         <InArgument x:TypeArguments="x:String" x:Key="in_To">[Email]</InArgument>
                                         <InArgument x:TypeArguments="x:String" x:Key="in_Subject">[in_HospitalName &amp; " reminder — " &amp; ApptRef]</InArgument>
                                         <InArgument x:TypeArguments="x:String" x:Key="in_HtmlBody">["&lt;p&gt;" &amp; MsgBody &amp; "&lt;/p&gt;"]</InArgument>
@@ -409,16 +409,16 @@ out_Channels = result">
                                         <OutArgument x:TypeArguments="x:String" x:Key="out_MessageId">[NotifId]</OutArgument>
                                         <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[NotifError]</OutArgument>
                                         <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[NotifRetryable]</OutArgument>
-                                      </InvokeWorkflowFile.Arguments>
-                                    </InvokeWorkflowFile>
+                                      </ui:InvokeWorkflowFile.Arguments>
+                                    </ui:InvokeWorkflowFile>
                                   </If.Else>
                                 </If>
 
                                 <!-- Log the notification -->
-                                <InvokeWorkflowFile DisplayName="POST notification"
+                                <ui:InvokeWorkflowFile DisplayName="POST notification"
                                   sap2010:WorkflowViewState.IdRef="Invoke_LogN"
                                   WorkflowFileName="..\..\shared\HMS_Client.xaml">
-                                  <InvokeWorkflowFile.Arguments>
+                                  <ui:InvokeWorkflowFile.Arguments>
                                     <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
                                     <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
                                     <InArgument x:TypeArguments="x:String" x:Key="in_Method">["POST"]</InArgument>
@@ -429,8 +429,8 @@ out_Channels = result">
                                     <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[ResponseJson]</OutArgument>
                                     <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[ErrorCode]</OutArgument>
                                     <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
-                                  </InvokeWorkflowFile.Arguments>
-                                </InvokeWorkflowFile>
+                                  </ui:InvokeWorkflowFile.Arguments>
+                                </ui:InvokeWorkflowFile>
 
                                 <If Condition="[NotifOk]" sap2010:WorkflowViewState.IdRef="If_NotifOk">
                                   <If.Then>
