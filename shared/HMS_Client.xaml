@@ -7,8 +7,6 @@
  xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib"
  xmlns:sd="clr-namespace:System.Data;assembly=System.Data.Common"
  xmlns:ui="http://schemas.uipath.com/workflow/activities"
- xmlns:uwa="clr-namespace:UiPath.Web.Activities;assembly=UiPath.Web.Activities"
- xmlns:jl="clr-namespace:Newtonsoft.Json.Linq;assembly=Newtonsoft.Json"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <x:Members>
     <x:Property Name="in_BaseUrl" Type="InArgument(x:String)" />
@@ -29,6 +27,8 @@
       <x:String>System.Collections.Generic</x:String>
       <x:String>System.Data</x:String>
       <x:String>System.Linq</x:String>
+      <x:String>System.Net.Http</x:String>
+      <x:String>System.Threading</x:String>
       <x:String>UiPath.Core</x:String>
       <x:String>UiPath.Core.Activities</x:String>
       <x:String>Newtonsoft.Json.Linq</x:String>
@@ -37,8 +37,8 @@
   <TextExpression.ReferencesForImplementation>
     <scg:List x:TypeArguments="AssemblyReference" Capacity="8">
       <AssemblyReference>System.Linq</AssemblyReference>
+      <AssemblyReference>System.Net.Http</AssemblyReference>
       <AssemblyReference>UiPath.System.Activities</AssemblyReference>
-      <AssemblyReference>UiPath.Web.Activities</AssemblyReference>
       <AssemblyReference>Newtonsoft.Json</AssemblyReference>
     </scg:List>
   </TextExpression.ReferencesForImplementation>
@@ -46,8 +46,9 @@
   <Sequence DisplayName="HMS Client" sap2010:WorkflowViewState.IdRef="Seq_Root">
     <sap2010:Annotation.AnnotationText>shared/HMS_Client.xaml — one wrapper for every REST call to the Mock HMS.
 
-Every HMS API call from every bot goes through this workflow so auth, retry
-and error handling are written exactly once.
+Auth, retry and error handling live in a single InvokeCode block that uses
+System.Net.Http.HttpClient directly. That sidesteps Studio 26's activity-pack
+quirks around the HTTP Request activity's Method and Headers types.
 
 Retry policy:
   2xx                        success
@@ -56,174 +57,95 @@ Retry policy:
   retryable = false          return at once with out_ErrorCode set
   401 UNAUTHORIZED           system exception — asset is wrong, every call fails the same way
   timeout / socket           counts as retryable</sap2010:Annotation.AnnotationText>
-    <Sequence.Variables>
-      <Variable x:TypeArguments="x:Int32" Name="AttemptNo" Default="[1]" />
-      <Variable x:TypeArguments="x:String" Name="Url" />
-      <Variable x:TypeArguments="x:String" Name="ApiKeyPlain" />
-      <Variable x:TypeArguments="x:Boolean" Name="Done" Default="[False]" />
-      <Variable x:TypeArguments="jl:JObject" Name="JErr" />
-      <Variable x:TypeArguments="x:Int32" Name="Backoff" Default="[2]" />
-    </Sequence.Variables>
 
     <ui:LogMessage DisplayName="Log start" Level="Trace"
       Message="[&quot;HMS_Client &quot; &amp; in_Method &amp; &quot; &quot; &amp; in_Path]"
       sap2010:WorkflowViewState.IdRef="Log_Start" />
 
-    <Assign DisplayName="Build URL" sap2010:WorkflowViewState.IdRef="Assign_Url">
-      <Assign.To><OutArgument x:TypeArguments="x:String">[Url]</OutArgument></Assign.To>
-      <Assign.Value><InArgument x:TypeArguments="x:String">[in_BaseUrl.TrimEnd("/"c) &amp; "/api/v1" &amp; in_Path]</InArgument></Assign.Value>
-    </Assign>
+    <ui:InvokeCode DisplayName="Send and retry"
+      sap2010:WorkflowViewState.IdRef="InvokeCode_Http"
+      Language="VBNet"
+      Code="Dim keyPlain As String = New System.Net.NetworkCredential(String.Empty, in_ApiKey).Password
+Dim url As String = in_BaseUrl.TrimEnd(&quot;/&quot;c) &amp; &quot;/api/v1&quot; &amp; in_Path
+Dim client As New System.Net.Http.HttpClient()
+client.Timeout = TimeSpan.FromSeconds(30)
 
-    <Assign DisplayName="SecureString to plain" sap2010:WorkflowViewState.IdRef="Assign_Key">
-      <Assign.To><OutArgument x:TypeArguments="x:String">[ApiKeyPlain]</OutArgument></Assign.To>
-      <Assign.Value><InArgument x:TypeArguments="x:String">[New System.Net.NetworkCredential(String.Empty, in_ApiKey).Password]</InArgument></Assign.Value>
-    </Assign>
+out_ErrorCode = &quot;&quot;
+out_Retryable = False
+out_StatusCode = 0
+out_ResponseJson = &quot;&quot;
 
-    <Assign DisplayName="Default outputs" sap2010:WorkflowViewState.IdRef="Assign_Defaults">
-      <Assign.To><OutArgument x:TypeArguments="x:String">[out_ErrorCode]</OutArgument></Assign.To>
-      <Assign.Value><InArgument x:TypeArguments="x:String">[""]</InArgument></Assign.Value>
-    </Assign>
+Dim attempt As Integer = 1
+Dim backoff As Integer = 2
+Dim done As Boolean = False
 
-    <While DisplayName="Retry loop"
-      Condition="[Not Done AndAlso AttemptNo &lt;= in_MaxAttempts]"
-      sap2010:WorkflowViewState.IdRef="While_Retry">
-      <TryCatch DisplayName="Attempt" sap2010:WorkflowViewState.IdRef="Try_Attempt">
-        <TryCatch.Try>
-          <Sequence DisplayName="Do call" sap2010:WorkflowViewState.IdRef="Seq_Do">
-            <uwa:HttpClient DisplayName="HTTP Request"
-              sap2010:WorkflowViewState.IdRef="Http_1"
-              EndPoint="[Url]"
-              Body="[in_Body]"
-              BodyFormat="application/json"
-              ContinueOnError="True"
-              Result="[out_ResponseJson]"
-              StatusCode="[out_StatusCode]"
-              TimeoutMS="30000">
-              <uwa:HttpClient.Method>
-                <InArgument x:TypeArguments="uwa:HttpMethod">[CType(System.Enum.Parse(GetType(UiPath.Web.Activities.HttpMethod), in_Method, True), UiPath.Web.Activities.HttpMethod)]</InArgument>
-              </uwa:HttpClient.Method>
-              <uwa:HttpClient.Headers>
-                <InArgument x:TypeArguments="scg:Dictionary(x:String, x:String)">[New Dictionary(Of String, String) From {{"X-API-Key", ApiKeyPlain}, {"Accept", "application/json"}}]</InArgument>
-              </uwa:HttpClient.Headers>
-            </uwa:HttpClient>
+Try
+    While Not done AndAlso attempt &lt;= in_MaxAttempts
+        Try
+            Dim req As New System.Net.Http.HttpRequestMessage(New System.Net.Http.HttpMethod(in_Method.ToUpper()), url)
+            req.Headers.TryAddWithoutValidation(&quot;X-API-Key&quot;, keyPlain)
+            req.Headers.TryAddWithoutValidation(&quot;Accept&quot;, &quot;application/json&quot;)
+            If Not String.IsNullOrEmpty(in_Body) Then
+                req.Content = New System.Net.Http.StringContent(in_Body, System.Text.Encoding.UTF8, &quot;application/json&quot;)
+            End If
 
-            <If DisplayName="Success?" Condition="[out_StatusCode &gt;= 200 AndAlso out_StatusCode &lt; 300]"
-              sap2010:WorkflowViewState.IdRef="If_Ok">
-              <If.Then>
-                <Sequence sap2010:WorkflowViewState.IdRef="Seq_Ok">
-                  <Assign sap2010:WorkflowViewState.IdRef="Assign_Ok_Err">
-                    <Assign.To><OutArgument x:TypeArguments="x:String">[out_ErrorCode]</OutArgument></Assign.To>
-                    <Assign.Value><InArgument x:TypeArguments="x:String">[""]</InArgument></Assign.Value>
-                  </Assign>
-                  <Assign sap2010:WorkflowViewState.IdRef="Assign_Ok_Retry">
-                    <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_Retryable]</OutArgument></Assign.To>
-                    <Assign.Value><InArgument x:TypeArguments="x:Boolean">[False]</InArgument></Assign.Value>
-                  </Assign>
-                  <Assign sap2010:WorkflowViewState.IdRef="Assign_Ok_Done">
-                    <Assign.To><OutArgument x:TypeArguments="x:Boolean">[Done]</OutArgument></Assign.To>
-                    <Assign.Value><InArgument x:TypeArguments="x:Boolean">[True]</InArgument></Assign.Value>
-                  </Assign>
-                </Sequence>
-              </If.Then>
-              <If.Else>
-                <Sequence sap2010:WorkflowViewState.IdRef="Seq_Err">
-                  <If DisplayName="401 auth failure?" Condition="[out_StatusCode = 401]"
-                    sap2010:WorkflowViewState.IdRef="If_401">
-                    <If.Then>
-                      <Throw DisplayName="Throw system exception"
-                        Exception="[New System.InvalidOperationException(&quot;HMS returned 401 UNAUTHORIZED — check HMS_ApiKey asset&quot;)]"
-                        sap2010:WorkflowViewState.IdRef="Throw_401" />
-                    </If.Then>
-                  </If>
+            Dim resp As System.Net.Http.HttpResponseMessage = client.SendAsync(req).GetAwaiter().GetResult()
+            out_StatusCode = CInt(resp.StatusCode)
+            out_ResponseJson = resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
 
-                  <ui:DeserializeJson DisplayName="Parse error envelope"
-                    JsonObject="[JErr]"
-                    JsonString="[If(String.IsNullOrWhiteSpace(out_ResponseJson), &quot;{}&quot;, out_ResponseJson)]"
-                    sap2010:WorkflowViewState.IdRef="Deser_Err" />
+            If out_StatusCode &gt;= 200 AndAlso out_StatusCode &lt; 300 Then
+                out_ErrorCode = &quot;&quot;
+                out_Retryable = False
+                done = True
+            Else
+                If out_StatusCode = 401 Then
+                    Throw New System.InvalidOperationException(&quot;HMS 401 UNAUTHORIZED — check HMS_ApiKey asset&quot;)
+                End If
+                Try
+                    Dim j As Newtonsoft.Json.Linq.JObject = Newtonsoft.Json.Linq.JObject.Parse(If(String.IsNullOrWhiteSpace(out_ResponseJson), &quot;{}&quot;, out_ResponseJson))
+                    out_ErrorCode = If(j(&quot;error_code&quot;) IsNot Nothing, j(&quot;error_code&quot;).ToString(), &quot;HTTP_&quot; &amp; out_StatusCode.ToString())
+                    out_Retryable = (j(&quot;retryable&quot;) IsNot Nothing) AndAlso Boolean.Parse(j(&quot;retryable&quot;).ToString())
+                Catch
+                    out_ErrorCode = &quot;HTTP_&quot; &amp; out_StatusCode.ToString()
+                End Try
 
-                  <Assign sap2010:WorkflowViewState.IdRef="Assign_Err_Code">
-                    <Assign.To><OutArgument x:TypeArguments="x:String">[out_ErrorCode]</OutArgument></Assign.To>
-                    <Assign.Value><InArgument x:TypeArguments="x:String">[If(JErr Is Nothing OrElse JErr("error_code") Is Nothing, "HTTP_" &amp; out_StatusCode.ToString(), JErr("error_code").ToString())]</InArgument></Assign.Value>
-                  </Assign>
-
-                  <Assign sap2010:WorkflowViewState.IdRef="Assign_Err_Retry">
-                    <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_Retryable]</OutArgument></Assign.To>
-                    <Assign.Value><InArgument x:TypeArguments="x:Boolean">[JErr IsNot Nothing AndAlso JErr("retryable") IsNot Nothing AndAlso Boolean.Parse(JErr("retryable").ToString())]</InArgument></Assign.Value>
-                  </Assign>
-
-                  <If DisplayName="Retry?" Condition="[out_Retryable AndAlso out_ErrorCode &lt;&gt; &quot;SLOT_TAKEN&quot; AndAlso out_ErrorCode &lt;&gt; &quot;SLOT_LOCKED&quot; AndAlso AttemptNo &lt; in_MaxAttempts]"
-                    sap2010:WorkflowViewState.IdRef="If_Retry">
-                    <If.Then>
-                      <Sequence sap2010:WorkflowViewState.IdRef="Seq_Retry">
-                        <ui:LogMessage DisplayName="Log retry" Level="Warn"
-                          Message="[&quot;HMS &quot; &amp; out_ErrorCode &amp; &quot; on attempt &quot; &amp; AttemptNo.ToString() &amp; &quot;, backing off &quot; &amp; Backoff.ToString() &amp; &quot;s&quot;]"
-                          sap2010:WorkflowViewState.IdRef="Log_Retry" />
-                        <ui:Delay Duration="[TimeSpan.FromSeconds(Backoff)]"
-                          sap2010:WorkflowViewState.IdRef="Delay_Backoff" />
-                        <Assign sap2010:WorkflowViewState.IdRef="Assign_Backoff">
-                          <Assign.To><OutArgument x:TypeArguments="x:Int32">[Backoff]</OutArgument></Assign.To>
-                          <Assign.Value><InArgument x:TypeArguments="x:Int32">[Backoff * 2]</InArgument></Assign.Value>
-                        </Assign>
-                      </Sequence>
-                    </If.Then>
-                    <If.Else>
-                      <Assign sap2010:WorkflowViewState.IdRef="Assign_NoRetry_Done">
-                        <Assign.To><OutArgument x:TypeArguments="x:Boolean">[Done]</OutArgument></Assign.To>
-                        <Assign.Value><InArgument x:TypeArguments="x:Boolean">[True]</InArgument></Assign.Value>
-                      </Assign>
-                    </If.Else>
-                  </If>
-                </Sequence>
-              </If.Else>
-            </If>
-          </Sequence>
-        </TryCatch.Try>
-        <TryCatch.Catches>
-          <Catch x:TypeArguments="s:Exception" sap2010:WorkflowViewState.IdRef="Catch_Net">
-            <ActivityAction x:TypeArguments="s:Exception">
-              <ActivityAction.Argument><DelegateInArgument x:TypeArguments="s:Exception" Name="ex" /></ActivityAction.Argument>
-              <Sequence sap2010:WorkflowViewState.IdRef="Seq_NetErr">
-                <ui:LogMessage DisplayName="Log network error" Level="Warn"
-                  Message="[&quot;HMS network failure on attempt &quot; &amp; AttemptNo.ToString() &amp; &quot;: &quot; &amp; ex.Message]"
-                  sap2010:WorkflowViewState.IdRef="Log_Net" />
-                <Assign sap2010:WorkflowViewState.IdRef="Assign_Net_Code">
-                  <Assign.To><OutArgument x:TypeArguments="x:String">[out_ErrorCode]</OutArgument></Assign.To>
-                  <Assign.Value><InArgument x:TypeArguments="x:String">["NETWORK_TIMEOUT"]</InArgument></Assign.Value>
-                </Assign>
-                <Assign sap2010:WorkflowViewState.IdRef="Assign_Net_Retry">
-                  <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_Retryable]</OutArgument></Assign.To>
-                  <Assign.Value><InArgument x:TypeArguments="x:Boolean">[True]</InArgument></Assign.Value>
-                </Assign>
-                <If Condition="[AttemptNo &gt;= in_MaxAttempts]"
-                  sap2010:WorkflowViewState.IdRef="If_Net_LastAttempt">
-                  <If.Then>
-                    <Assign sap2010:WorkflowViewState.IdRef="Assign_Net_Done">
-                      <Assign.To><OutArgument x:TypeArguments="x:Boolean">[Done]</OutArgument></Assign.To>
-                      <Assign.Value><InArgument x:TypeArguments="x:Boolean">[True]</InArgument></Assign.Value>
-                    </Assign>
-                  </If.Then>
-                  <If.Else>
-                    <Sequence sap2010:WorkflowViewState.IdRef="Seq_Net_Wait">
-                      <ui:Delay Duration="[TimeSpan.FromSeconds(Backoff)]"
-                        sap2010:WorkflowViewState.IdRef="Delay_Net" />
-                      <Assign sap2010:WorkflowViewState.IdRef="Assign_Net_Backoff">
-                        <Assign.To><OutArgument x:TypeArguments="x:Int32">[Backoff]</OutArgument></Assign.To>
-                        <Assign.Value><InArgument x:TypeArguments="x:Int32">[Backoff * 2]</InArgument></Assign.Value>
-                      </Assign>
-                    </Sequence>
-                  </If.Else>
-                </If>
-              </Sequence>
-            </ActivityAction>
-          </Catch>
-        </TryCatch.Catches>
-      </TryCatch>
-
-      <Assign DisplayName="Increment attempt" sap2010:WorkflowViewState.IdRef="Assign_NextAttempt">
-        <Assign.To><OutArgument x:TypeArguments="x:Int32">[AttemptNo]</OutArgument></Assign.To>
-        <Assign.Value><InArgument x:TypeArguments="x:Int32">[AttemptNo + 1]</InArgument></Assign.Value>
-      </Assign>
-    </While>
+                If out_Retryable AndAlso out_ErrorCode &lt;&gt; &quot;SLOT_TAKEN&quot; AndAlso out_ErrorCode &lt;&gt; &quot;SLOT_LOCKED&quot; AndAlso attempt &lt; in_MaxAttempts Then
+                    System.Threading.Thread.Sleep(backoff * 1000)
+                    backoff = backoff * 2
+                Else
+                    done = True
+                End If
+            End If
+        Catch iex As System.InvalidOperationException
+            Throw
+        Catch ex As Exception
+            out_ErrorCode = &quot;NETWORK_TIMEOUT&quot;
+            out_Retryable = True
+            If attempt &gt;= in_MaxAttempts Then
+                done = True
+            Else
+                System.Threading.Thread.Sleep(backoff * 1000)
+                backoff = backoff * 2
+            End If
+        End Try
+        attempt = attempt + 1
+    End While
+Finally
+    client.Dispose()
+End Try">
+      <ui:InvokeCode.Arguments>
+        <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
+        <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+        <InArgument x:TypeArguments="x:String" x:Key="in_Method">[in_Method]</InArgument>
+        <InArgument x:TypeArguments="x:String" x:Key="in_Path">[in_Path]</InArgument>
+        <InArgument x:TypeArguments="x:String" x:Key="in_Body">[in_Body]</InArgument>
+        <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxAttempts">[in_MaxAttempts]</InArgument>
+        <OutArgument x:TypeArguments="x:Int32" x:Key="out_StatusCode">[out_StatusCode]</OutArgument>
+        <OutArgument x:TypeArguments="x:String" x:Key="out_ResponseJson">[out_ResponseJson]</OutArgument>
+        <OutArgument x:TypeArguments="x:String" x:Key="out_ErrorCode">[out_ErrorCode]</OutArgument>
+        <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[out_Retryable]</OutArgument>
+      </ui:InvokeCode.Arguments>
+    </ui:InvokeCode>
 
     <ui:LogMessage DisplayName="Log done" Level="Trace"
       Message="[&quot;HMS_Client done: status=&quot; &amp; out_StatusCode.ToString() &amp; &quot; err=&quot; &amp; out_ErrorCode]"
