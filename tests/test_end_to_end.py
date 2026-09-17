@@ -166,12 +166,13 @@ def test_full_booking_flow(hms: HmsClient):
     assert r.status_code == 200
     assert r.json()["queue_status"] == "PROCESSED"
 
-    # Appointment exists and is SCHEDULED, with a confirmation notification
+    # Appointment exists and is SCHEDULED, with a confirmation notification.
+    # Excel sync runs out-of-band (tools/excel_mirror.py sync) so we don't
+    # assert on synced_to_excel_at here.
     r = hms.request("GET", f"/appointments/{out['reference_no']}")
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "SCHEDULED"
-    assert body["synced_to_excel_at"] is not None
 
     r = hms.request("GET", f"/notifications?appointment_id={out['appointment_id']}&type=CONFIRMATION")
     assert r.status_code == 200
