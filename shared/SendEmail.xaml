@@ -7,6 +7,8 @@
  xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib"
  xmlns:sd="clr-namespace:System.Data;assembly=System.Data.Common"
  xmlns:ui="http://schemas.uipath.com/workflow/activities"
+ xmlns:uwa="clr-namespace:UiPath.Web.Activities;assembly=UiPath.Web.Activities"
+ xmlns:jl="clr-namespace:Newtonsoft.Json.Linq;assembly=Newtonsoft.Json"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <x:Members>
     <x:Property Name="in_To" Type="InArgument(x:String)" />
@@ -27,62 +29,179 @@
       <x:String>System.Collections.Generic</x:String>
       <x:String>System.Data</x:String>
       <x:String>System.Linq</x:String>
+      <x:String>System.Text.RegularExpressions</x:String>
       <x:String>UiPath.Core</x:String>
       <x:String>UiPath.Core.Activities</x:String>
+      <x:String>Newtonsoft.Json.Linq</x:String>
     </scg:List>
   </TextExpression.NamespacesForImplementation>
   <TextExpression.ReferencesForImplementation>
     <scg:List x:TypeArguments="AssemblyReference" Capacity="8">
       <AssemblyReference>System.Linq</AssemblyReference>
+      <AssemblyReference>System.Text.RegularExpressions</AssemblyReference>
       <AssemblyReference>UiPath.System.Activities</AssemblyReference>
-      <AssemblyReference>UiPath.WebAPI.Activities</AssemblyReference>
+      <AssemblyReference>UiPath.Web.Activities</AssemblyReference>
+      <AssemblyReference>Newtonsoft.Json</AssemblyReference>
     </scg:List>
   </TextExpression.ReferencesForImplementation>
-<Sequence DisplayName="Send Email via SendGrid" sap2010:WorkflowViewState.IdRef="Sequence_14">
-<sap2010:Annotation.AnnotationText>shared/SendEmail.xaml — SendGrid wrapper used by all three bots.</sap2010:Annotation.AnnotationText>
-<Sequence DisplayName="1. Guard" sap2010:WorkflowViewState.IdRef="Sequence_2">
-<ui:Comment Text='TODO(Studio): If in_To is empty or not an email -&gt; out_ErrorCode = "INVALID_CONTACT", out_Retryable = False, exit' sap2010:WorkflowViewState.IdRef="Comment_1" />
-</Sequence>
-<Sequence DisplayName="2. Dry run" sap2010:WorkflowViewState.IdRef="Sequence_4">
-<ui:Comment Text='TODO(Studio): If in_DryRun: log masked recipient, out_Success = True, out_MessageId = "DRYRUN-" &amp; Guid, exit' sap2010:WorkflowViewState.IdRef="Comment_3" />
-</Sequence>
-<TryCatch DisplayName="3. Call SendGrid" sap2010:WorkflowViewState.IdRef="TryCatch_10">
-<sap2010:Annotation.AnnotationText>Body:
-  {"personalizations":[{"to":[{"email": in_To}]}],
-   "from":{"email": in_FromEmail},
-   "subject": in_Subject,
-   "content":[{"type":"text/html","value": in_HtmlBody}]}
 
-SendGrid returns 202 Accepted with an EMPTY body. The message id is in the
-X-Message-Id response header, not the JSON — reading the body gets you nothing.
+  <Sequence DisplayName="Send Email via SendGrid" sap2010:WorkflowViewState.IdRef="Seq_Root">
+    <sap2010:Annotation.AnnotationText>shared/SendEmail.xaml — SendGrid wrapper.
 
-in_FromEmail must be a Single Sender verified in SendGrid, or every send
-returns 403. That is a configuration fault, so treat 403 like 401: system
-exception, stop the job.
+Dry run: whole pipeline runs, provider = DRYRUN, no credits.
+Live:    POST /v3/mail/send with Bearer auth; 202 = success (empty body).
+         401/403 = system exception (bad key or unverified Single Sender).</sap2010:Annotation.AnnotationText>
+    <Sequence.Variables>
+      <Variable x:TypeArguments="x:String" Name="ApiKeyPlain" />
+      <Variable x:TypeArguments="x:String" Name="JsonBody" />
+      <Variable x:TypeArguments="x:Int32" Name="StatusCode" />
+      <Variable x:TypeArguments="x:String" Name="Response" />
+      <Variable x:TypeArguments="x:Boolean" Name="Exit" Default="[False]" />
+    </Sequence.Variables>
 
-  202                 success
-  429, 5xx, timeout   out_Retryable = True
-  400                 out_Retryable = False, INVALID_CONTACT
-  401, 403            system exception — API key or sender not set up</sap2010:Annotation.AnnotationText>
-<TryCatch.Try>
-<Sequence DisplayName="HTTP Request" sap2010:WorkflowViewState.IdRef="Sequence_7">
-<ui:Comment Text="TODO(Studio): POST https://api.sendgrid.com/v3/mail/send ; header Authorization: Bearer {in_ApiKey} ; JSON body below" sap2010:WorkflowViewState.IdRef="Comment_5" />
-<ui:Comment Text="TODO(Studio): 202 -&gt; out_Success = True, out_MessageId = X-Message-Id response header" sap2010:WorkflowViewState.IdRef="Comment_6" />
-</Sequence>
-</TryCatch.Try>
-<TryCatch.Catches>
-<Catch x:TypeArguments="s:Exception" sap2010:WorkflowViewState.IdRef="Catch_11">
-<ActivityAction x:TypeArguments="s:Exception">
-<ActivityAction.Argument><DelegateInArgument x:TypeArguments="s:Exception" Name="ex" /></ActivityAction.Argument>
-<Sequence DisplayName="SendGrid call failed" sap2010:WorkflowViewState.IdRef="Sequence_9">
-<ui:Comment Text="TODO(Studio): out_Success = False ; map status as above ; rethrow on 401 or 403" sap2010:WorkflowViewState.IdRef="Comment_8" />
-</Sequence>
-</ActivityAction>
-</Catch>
-</TryCatch.Catches>
-</TryCatch>
-<Sequence DisplayName="4. Log" sap2010:WorkflowViewState.IdRef="Sequence_13">
-<ui:LogMessage DisplayName="Log masked result" Level="Info" Message='["Email to " &amp; in_To.Substring(0, 2) &amp; "****" &amp; in_To.Substring(in_To.IndexOf("@")) &amp; " success=" &amp; out_Success.ToString()]' sap2010:WorkflowViewState.IdRef="LogMessage_12" />
-</Sequence>
-</Sequence>
+    <Assign DisplayName="Default outputs" sap2010:WorkflowViewState.IdRef="Assign_Defaults">
+      <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_Success]</OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:Boolean">[False]</InArgument></Assign.Value>
+    </Assign>
+
+    <If DisplayName="Validate email"
+      Condition="[String.IsNullOrWhiteSpace(in_To) OrElse Not Regex.IsMatch(in_To, &quot;^[^@\s]+@[^@\s]+\.[^@\s]+$&quot;)]"
+      sap2010:WorkflowViewState.IdRef="If_Bad">
+      <If.Then>
+        <Sequence sap2010:WorkflowViewState.IdRef="Seq_Bad">
+          <Assign sap2010:WorkflowViewState.IdRef="Assign_Bad_Code">
+            <Assign.To><OutArgument x:TypeArguments="x:String">[out_ErrorCode]</OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:String">["INVALID_CONTACT"]</InArgument></Assign.Value>
+          </Assign>
+          <Assign sap2010:WorkflowViewState.IdRef="Assign_Bad_Retry">
+            <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_Retryable]</OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:Boolean">[False]</InArgument></Assign.Value>
+          </Assign>
+          <Assign sap2010:WorkflowViewState.IdRef="Assign_Bad_Exit">
+            <Assign.To><OutArgument x:TypeArguments="x:Boolean">[Exit]</OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:Boolean">[True]</InArgument></Assign.Value>
+          </Assign>
+        </Sequence>
+      </If.Then>
+    </If>
+
+    <If DisplayName="Dry run" Condition="[Not Exit AndAlso in_DryRun]"
+      sap2010:WorkflowViewState.IdRef="If_Dry">
+      <If.Then>
+        <Sequence sap2010:WorkflowViewState.IdRef="Seq_Dry">
+          <Assign sap2010:WorkflowViewState.IdRef="Assign_Dry_Id">
+            <Assign.To><OutArgument x:TypeArguments="x:String">[out_MessageId]</OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:String">["DRYRUN-" &amp; Guid.NewGuid().ToString("N").Substring(0, 12)]</InArgument></Assign.Value>
+          </Assign>
+          <Assign sap2010:WorkflowViewState.IdRef="Assign_Dry_Ok">
+            <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_Success]</OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:Boolean">[True]</InArgument></Assign.Value>
+          </Assign>
+          <ui:LogMessage DisplayName="Log dry-run" Level="Info"
+            Message="[&quot;EMAIL DRYRUN to &quot; &amp; in_To.Substring(0, Math.Min(2, in_To.Length)) &amp; &quot;****&quot; &amp; in_To.Substring(in_To.IndexOf(&quot;@&quot;c)) &amp; &quot; subj=&quot; &amp; in_Subject]"
+            sap2010:WorkflowViewState.IdRef="Log_Dry" />
+          <Assign sap2010:WorkflowViewState.IdRef="Assign_Dry_Exit">
+            <Assign.To><OutArgument x:TypeArguments="x:Boolean">[Exit]</OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:Boolean">[True]</InArgument></Assign.Value>
+          </Assign>
+        </Sequence>
+      </If.Then>
+    </If>
+
+    <If DisplayName="Live send" Condition="[Not Exit]" sap2010:WorkflowViewState.IdRef="If_Live">
+      <If.Then>
+        <Sequence sap2010:WorkflowViewState.IdRef="Seq_Live">
+          <Assign sap2010:WorkflowViewState.IdRef="Assign_Key">
+            <Assign.To><OutArgument x:TypeArguments="x:String">[ApiKeyPlain]</OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:String">[New System.Net.NetworkCredential(String.Empty, in_ApiKey).Password]</InArgument></Assign.Value>
+          </Assign>
+
+          <Assign sap2010:WorkflowViewState.IdRef="Assign_Body">
+            <Assign.To><OutArgument x:TypeArguments="x:String">[JsonBody]</OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:String">[New Newtonsoft.Json.Linq.JObject(New Newtonsoft.Json.Linq.JProperty("personalizations", New Newtonsoft.Json.Linq.JArray(New Newtonsoft.Json.Linq.JObject(New Newtonsoft.Json.Linq.JProperty("to", New Newtonsoft.Json.Linq.JArray(New Newtonsoft.Json.Linq.JObject(New Newtonsoft.Json.Linq.JProperty("email", in_To))))))), New Newtonsoft.Json.Linq.JProperty("from", New Newtonsoft.Json.Linq.JObject(New Newtonsoft.Json.Linq.JProperty("email", in_FromEmail))), New Newtonsoft.Json.Linq.JProperty("subject", in_Subject), New Newtonsoft.Json.Linq.JProperty("content", New Newtonsoft.Json.Linq.JArray(New Newtonsoft.Json.Linq.JObject(New Newtonsoft.Json.Linq.JProperty("type", "text/html"), New Newtonsoft.Json.Linq.JProperty("value", in_HtmlBody))))).ToString()]</InArgument></Assign.Value>
+          </Assign>
+
+          <TryCatch DisplayName="Call SendGrid" sap2010:WorkflowViewState.IdRef="Try_SG">
+            <TryCatch.Try>
+              <Sequence sap2010:WorkflowViewState.IdRef="Seq_Call">
+                <uwa:HttpClient DisplayName="POST /v3/mail/send"
+                  sap2010:WorkflowViewState.IdRef="Http_SG"
+                  EndPoint="https://api.sendgrid.com/v3/mail/send"
+                  Method="POST"
+                  Body="[JsonBody]"
+                  BodyFormat="application/json"
+                  ContinueOnError="True"
+                  ResponseContent="[Response]"
+                  StatusCode="[StatusCode]"
+                  TimeoutMS="30000">
+                  <uwa:HttpClient.Headers>
+                    <scg:Dictionary x:TypeArguments="x:String, x:String">
+                      <x:String x:Key="Authorization">[&quot;Bearer &quot; &amp; ApiKeyPlain]</x:String>
+                      <x:String x:Key="Accept">application/json</x:String>
+                    </scg:Dictionary>
+                  </uwa:HttpClient.Headers>
+                </uwa:HttpClient>
+
+                <If Condition="[StatusCode = 202]" sap2010:WorkflowViewState.IdRef="If_202">
+                  <If.Then>
+                    <Sequence sap2010:WorkflowViewState.IdRef="Seq_202">
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_Ok_Id">
+                        <Assign.To><OutArgument x:TypeArguments="x:String">[out_MessageId]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="x:String">["SG-" &amp; Guid.NewGuid().ToString("N").Substring(0, 12)]</InArgument></Assign.Value>
+                      </Assign>
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_Ok_Bool">
+                        <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_Success]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="x:Boolean">[True]</InArgument></Assign.Value>
+                      </Assign>
+                    </Sequence>
+                  </If.Then>
+                  <If.Else>
+                    <Sequence sap2010:WorkflowViewState.IdRef="Seq_NotOk">
+                      <If Condition="[StatusCode = 401 OrElse StatusCode = 403]"
+                        sap2010:WorkflowViewState.IdRef="If_Auth">
+                        <If.Then>
+                          <Throw
+                            Exception="[New System.InvalidOperationException(&quot;SendGrid returned &quot; &amp; StatusCode.ToString() &amp; &quot; — SendGrid_ApiKey or Single Sender not set up&quot;)]"
+                            sap2010:WorkflowViewState.IdRef="Throw_Auth" />
+                        </If.Then>
+                      </If>
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_Err_Code">
+                        <Assign.To><OutArgument x:TypeArguments="x:String">[out_ErrorCode]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="x:String">[If(StatusCode = 400, "INVALID_CONTACT", "SENDGRID_HTTP_" &amp; StatusCode.ToString())]</InArgument></Assign.Value>
+                      </Assign>
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_Err_Retry">
+                        <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_Retryable]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="x:Boolean">[StatusCode = 429 OrElse StatusCode &gt;= 500]</InArgument></Assign.Value>
+                      </Assign>
+                    </Sequence>
+                  </If.Else>
+                </If>
+              </Sequence>
+            </TryCatch.Try>
+            <TryCatch.Catches>
+              <Catch x:TypeArguments="s:Exception" sap2010:WorkflowViewState.IdRef="Catch_SG">
+                <ActivityAction x:TypeArguments="s:Exception">
+                  <ActivityAction.Argument><DelegateInArgument x:TypeArguments="s:Exception" Name="ex" /></ActivityAction.Argument>
+                  <Sequence sap2010:WorkflowViewState.IdRef="Seq_Catch_SG">
+                    <Assign sap2010:WorkflowViewState.IdRef="Assign_Net_Code">
+                      <Assign.To><OutArgument x:TypeArguments="x:String">[out_ErrorCode]</OutArgument></Assign.To>
+                      <Assign.Value><InArgument x:TypeArguments="x:String">["NETWORK_TIMEOUT"]</InArgument></Assign.Value>
+                    </Assign>
+                    <Assign sap2010:WorkflowViewState.IdRef="Assign_Net_Retry">
+                      <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_Retryable]</OutArgument></Assign.To>
+                      <Assign.Value><InArgument x:TypeArguments="x:Boolean">[True]</InArgument></Assign.Value>
+                    </Assign>
+                  </Sequence>
+                </ActivityAction>
+              </Catch>
+            </TryCatch.Catches>
+          </TryCatch>
+        </Sequence>
+      </If.Then>
+    </If>
+
+    <ui:LogMessage DisplayName="Log masked result" Level="Info"
+      Message="[&quot;EMAIL to &quot; &amp; If(in_To.Contains(&quot;@&quot;), in_To.Substring(0, Math.Min(2, in_To.IndexOf(&quot;@&quot;c))) &amp; &quot;****&quot; &amp; in_To.Substring(in_To.IndexOf(&quot;@&quot;c)), in_To) &amp; &quot; success=&quot; &amp; out_Success.ToString() &amp; &quot; err=&quot; &amp; out_ErrorCode]"
+      sap2010:WorkflowViewState.IdRef="Log_Done" />
+  </Sequence>
 </Activity>
