@@ -93,18 +93,17 @@ Retry policy:
             <uwa:HttpClient DisplayName="HTTP Request"
               sap2010:WorkflowViewState.IdRef="Http_1"
               EndPoint="[Url]"
-              Method="[in_Method]"
               Body="[in_Body]"
               BodyFormat="application/json"
               ContinueOnError="True"
-              ResponseContent="[out_ResponseJson]"
+              Result="[out_ResponseJson]"
               StatusCode="[out_StatusCode]"
               TimeoutMS="30000">
+              <uwa:HttpClient.Method>
+                <InArgument x:TypeArguments="uwa:HttpMethod">[CType(System.Enum.Parse(GetType(UiPath.Web.Activities.HttpMethod), in_Method, True), UiPath.Web.Activities.HttpMethod)]</InArgument>
+              </uwa:HttpClient.Method>
               <uwa:HttpClient.Headers>
-                <scg:Dictionary x:TypeArguments="x:String, x:String">
-                  <x:String x:Key="X-API-Key">[ApiKeyPlain]</x:String>
-                  <x:String x:Key="Accept">application/json</x:String>
-                </scg:Dictionary>
+                <InArgument x:TypeArguments="scg:Dictionary(x:String, x:String)">[New Dictionary(Of String, String) From {{"X-API-Key", ApiKeyPlain}, {"Accept", "application/json"}}]</InArgument>
               </uwa:HttpClient.Headers>
             </uwa:HttpClient>
 
