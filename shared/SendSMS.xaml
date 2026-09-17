@@ -7,6 +7,8 @@
  xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib"
  xmlns:sd="clr-namespace:System.Data;assembly=System.Data.Common"
  xmlns:ui="http://schemas.uipath.com/workflow/activities"
+ xmlns:uwa="clr-namespace:UiPath.Web.Activities;assembly=UiPath.Web.Activities"
+ xmlns:jl="clr-namespace:Newtonsoft.Json.Linq;assembly=Newtonsoft.Json"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <x:Members>
     <x:Property Name="in_To" Type="InArgument(x:String)" />
@@ -27,60 +29,191 @@
       <x:String>System.Collections.Generic</x:String>
       <x:String>System.Data</x:String>
       <x:String>System.Linq</x:String>
+      <x:String>System.Text.RegularExpressions</x:String>
       <x:String>UiPath.Core</x:String>
       <x:String>UiPath.Core.Activities</x:String>
+      <x:String>Newtonsoft.Json.Linq</x:String>
     </scg:List>
   </TextExpression.NamespacesForImplementation>
   <TextExpression.ReferencesForImplementation>
     <scg:List x:TypeArguments="AssemblyReference" Capacity="8">
       <AssemblyReference>System.Linq</AssemblyReference>
+      <AssemblyReference>System.Text.RegularExpressions</AssemblyReference>
       <AssemblyReference>UiPath.System.Activities</AssemblyReference>
-      <AssemblyReference>UiPath.WebAPI.Activities</AssemblyReference>
+      <AssemblyReference>UiPath.Web.Activities</AssemblyReference>
+      <AssemblyReference>Newtonsoft.Json</AssemblyReference>
     </scg:List>
   </TextExpression.ReferencesForImplementation>
-<Sequence DisplayName="Send SMS via Twilio" sap2010:WorkflowViewState.IdRef="Sequence_14">
-<sap2010:Annotation.AnnotationText>shared/SendSMS.xaml — Twilio wrapper used by all three bots.</sap2010:Annotation.AnnotationText>
-<Sequence DisplayName="1. Guard" sap2010:WorkflowViewState.IdRef="Sequence_2">
-<ui:Comment Text='TODO(Studio): Validate in_To against ^\+[1-9]\d{9,14}$ ; if invalid out_ErrorCode = "INVALID_CONTACT", out_Retryable = False, exit' sap2010:WorkflowViewState.IdRef="Comment_1" />
-</Sequence>
-<Sequence DisplayName="2. Dry run" sap2010:WorkflowViewState.IdRef="Sequence_4">
-<sap2010:Annotation.AnnotationText>DryRunNotifications = True during Phase 4 batch tests. The whole pipeline runs,
-the notification is logged with provider DRYRUN, and no Twilio trial credit is spent.</sap2010:Annotation.AnnotationText>
-<ui:Comment Text='TODO(Studio): If in_DryRun: log masked recipient and body length, out_Success = True, out_MessageId = "DRYRUN-" &amp; Guid, exit' sap2010:WorkflowViewState.IdRef="Comment_3" />
-</Sequence>
-<TryCatch DisplayName="3. Call Twilio" sap2010:WorkflowViewState.IdRef="TryCatch_10">
-<sap2010:Annotation.AnnotationText>Twilio's Messages API takes application/x-www-form-urlencoded, not JSON.
-A literal + in the To number must be URL-encoded as %2B, or Twilio receives a
-space and rejects the number with 21211.
 
-Response handling:
-  201                 success, keep the sid as provider_message_id
-  429, 5xx, timeout   out_Retryable = True
-  21211 invalid To    out_Retryable = False, INVALID_CONTACT
-  21608 unverified    out_Retryable = False — expected on the free trial, which
-                      only delivers to numbers verified in the Twilio console
-  21610 unsubscribed  out_Retryable = False, ErrorCode UNSUBSCRIBED — the caller
-                      must PATCH the patient's sms_consent to false</sap2010:Annotation.AnnotationText>
-<TryCatch.Try>
-<Sequence DisplayName="HTTP Request" sap2010:WorkflowViewState.IdRef="Sequence_7">
-<ui:Comment Text="TODO(Studio): POST https://api.twilio.com/2010-04-01/Accounts/{in_AccountSid}/Messages.json ; Basic auth in_AccountSid:in_AuthToken ; form fields To, From, Body" sap2010:WorkflowViewState.IdRef="Comment_5" />
-<ui:Comment Text="TODO(Studio): 201 -&gt; out_Success = True, out_MessageId = sid from response" sap2010:WorkflowViewState.IdRef="Comment_6" />
-</Sequence>
-</TryCatch.Try>
-<TryCatch.Catches>
-<Catch x:TypeArguments="s:Exception" sap2010:WorkflowViewState.IdRef="Catch_11">
-<ActivityAction x:TypeArguments="s:Exception">
-<ActivityAction.Argument><DelegateInArgument x:TypeArguments="s:Exception" Name="ex" /></ActivityAction.Argument>
-<Sequence DisplayName="Twilio call failed" sap2010:WorkflowViewState.IdRef="Sequence_9">
-<ui:Comment Text="TODO(Studio): out_Success = False ; map status and Twilio error code as above" sap2010:WorkflowViewState.IdRef="Comment_8" />
-</Sequence>
-</ActivityAction>
-</Catch>
-</TryCatch.Catches>
-</TryCatch>
-<Sequence DisplayName="4. Log" sap2010:WorkflowViewState.IdRef="Sequence_13">
-<sap2010:Annotation.AnnotationText>Log the recipient masked (+9198****3210). Full phone numbers never go into Orchestrator logs.</sap2010:Annotation.AnnotationText>
-<ui:LogMessage DisplayName="Log masked result" Level="Info" Message='["SMS to " &amp; in_To.Substring(0, 5) &amp; "****" &amp; in_To.Substring(in_To.Length - 4) &amp; " success=" &amp; out_Success.ToString()]' sap2010:WorkflowViewState.IdRef="LogMessage_12" />
-</Sequence>
-</Sequence>
+  <Sequence DisplayName="Send SMS via Twilio" sap2010:WorkflowViewState.IdRef="Seq_Root">
+    <sap2010:Annotation.AnnotationText>shared/SendSMS.xaml — Twilio wrapper used by all three bots.
+
+Dry run:  the whole pipeline still runs, provider = DRYRUN, no credits spent.
+Live:     POST to /2010-04-01/Accounts/{sid}/Messages.json with Basic auth and
+          application/x-www-form-urlencoded body. E.164 To is enforced before
+          the call.</sap2010:Annotation.AnnotationText>
+    <Sequence.Variables>
+      <Variable x:TypeArguments="x:String" Name="AuthTokenPlain" />
+      <Variable x:TypeArguments="x:String" Name="Endpoint" />
+      <Variable x:TypeArguments="x:String" Name="BodyForm" />
+      <Variable x:TypeArguments="x:String" Name="BasicAuth" />
+      <Variable x:TypeArguments="x:Int32" Name="StatusCode" />
+      <Variable x:TypeArguments="x:String" Name="Response" />
+      <Variable x:TypeArguments="jl:JObject" Name="J" />
+      <Variable x:TypeArguments="x:Boolean" Name="Exit" Default="[False]" />
+    </Sequence.Variables>
+
+    <Assign DisplayName="Default outputs" sap2010:WorkflowViewState.IdRef="Assign_Defaults">
+      <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_Success]</OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:Boolean">[False]</InArgument></Assign.Value>
+    </Assign>
+
+    <If DisplayName="Validate E.164"
+      Condition="[String.IsNullOrEmpty(in_To) OrElse Not Regex.IsMatch(in_To, &quot;^\+[1-9]\d{9,14}$&quot;)]"
+      sap2010:WorkflowViewState.IdRef="If_E164">
+      <If.Then>
+        <Sequence sap2010:WorkflowViewState.IdRef="Seq_BadNumber">
+          <Assign sap2010:WorkflowViewState.IdRef="Assign_BadCode">
+            <Assign.To><OutArgument x:TypeArguments="x:String">[out_ErrorCode]</OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:String">["INVALID_CONTACT"]</InArgument></Assign.Value>
+          </Assign>
+          <Assign sap2010:WorkflowViewState.IdRef="Assign_BadRetry">
+            <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_Retryable]</OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:Boolean">[False]</InArgument></Assign.Value>
+          </Assign>
+          <Assign sap2010:WorkflowViewState.IdRef="Assign_BadExit">
+            <Assign.To><OutArgument x:TypeArguments="x:Boolean">[Exit]</OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:Boolean">[True]</InArgument></Assign.Value>
+          </Assign>
+        </Sequence>
+      </If.Then>
+    </If>
+
+    <If DisplayName="Dry run branch" Condition="[Not Exit AndAlso in_DryRun]"
+      sap2010:WorkflowViewState.IdRef="If_Dry">
+      <If.Then>
+        <Sequence sap2010:WorkflowViewState.IdRef="Seq_Dry">
+          <Assign sap2010:WorkflowViewState.IdRef="Assign_Dry_Id">
+            <Assign.To><OutArgument x:TypeArguments="x:String">[out_MessageId]</OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:String">["DRYRUN-" &amp; Guid.NewGuid().ToString("N").Substring(0, 12)]</InArgument></Assign.Value>
+          </Assign>
+          <Assign sap2010:WorkflowViewState.IdRef="Assign_Dry_Ok">
+            <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_Success]</OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:Boolean">[True]</InArgument></Assign.Value>
+          </Assign>
+          <ui:LogMessage DisplayName="Log dry-run" Level="Info"
+            Message="[&quot;SMS DRYRUN to &quot; &amp; in_To.Substring(0, Math.Min(5, in_To.Length)) &amp; &quot;****&quot; &amp; in_To.Substring(Math.Max(0, in_To.Length - 4)) &amp; &quot; len=&quot; &amp; in_Body.Length.ToString()]"
+            sap2010:WorkflowViewState.IdRef="Log_Dry" />
+          <Assign sap2010:WorkflowViewState.IdRef="Assign_Dry_Exit">
+            <Assign.To><OutArgument x:TypeArguments="x:Boolean">[Exit]</OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:Boolean">[True]</InArgument></Assign.Value>
+          </Assign>
+        </Sequence>
+      </If.Then>
+    </If>
+
+    <If DisplayName="Live send" Condition="[Not Exit]" sap2010:WorkflowViewState.IdRef="If_Live">
+      <If.Then>
+        <Sequence sap2010:WorkflowViewState.IdRef="Seq_Live">
+          <Assign sap2010:WorkflowViewState.IdRef="Assign_Token">
+            <Assign.To><OutArgument x:TypeArguments="x:String">[AuthTokenPlain]</OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:String">[New System.Net.NetworkCredential(String.Empty, in_AuthToken).Password]</InArgument></Assign.Value>
+          </Assign>
+
+          <Assign sap2010:WorkflowViewState.IdRef="Assign_Endpoint">
+            <Assign.To><OutArgument x:TypeArguments="x:String">[Endpoint]</OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:String">["https://api.twilio.com/2010-04-01/Accounts/" &amp; in_AccountSid &amp; "/Messages.json"]</InArgument></Assign.Value>
+          </Assign>
+
+          <Assign sap2010:WorkflowViewState.IdRef="Assign_Basic">
+            <Assign.To><OutArgument x:TypeArguments="x:String">[BasicAuth]</OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:String">["Basic " &amp; Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(in_AccountSid &amp; ":" &amp; AuthTokenPlain))]</InArgument></Assign.Value>
+          </Assign>
+
+          <Assign sap2010:WorkflowViewState.IdRef="Assign_Body">
+            <Assign.To><OutArgument x:TypeArguments="x:String">[BodyForm]</OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:String">["To=" &amp; System.Net.WebUtility.UrlEncode(in_To) &amp; "&amp;From=" &amp; System.Net.WebUtility.UrlEncode(in_FromNumber) &amp; "&amp;Body=" &amp; System.Net.WebUtility.UrlEncode(in_Body)]</InArgument></Assign.Value>
+          </Assign>
+
+          <TryCatch DisplayName="Call Twilio" sap2010:WorkflowViewState.IdRef="Try_Twilio">
+            <TryCatch.Try>
+              <Sequence sap2010:WorkflowViewState.IdRef="Seq_Call">
+                <uwa:HttpClient DisplayName="POST Messages.json"
+                  sap2010:WorkflowViewState.IdRef="Http_Twilio"
+                  EndPoint="[Endpoint]"
+                  Method="POST"
+                  Body="[BodyForm]"
+                  BodyFormat="application/x-www-form-urlencoded"
+                  ContinueOnError="True"
+                  ResponseContent="[Response]"
+                  StatusCode="[StatusCode]"
+                  TimeoutMS="30000">
+                  <uwa:HttpClient.Headers>
+                    <scg:Dictionary x:TypeArguments="x:String, x:String">
+                      <x:String x:Key="Authorization">[BasicAuth]</x:String>
+                      <x:String x:Key="Accept">application/json</x:String>
+                    </scg:Dictionary>
+                  </uwa:HttpClient.Headers>
+                </uwa:HttpClient>
+
+                <If Condition="[StatusCode = 201 OrElse StatusCode = 200]"
+                  sap2010:WorkflowViewState.IdRef="If_Twilio_Ok">
+                  <If.Then>
+                    <Sequence sap2010:WorkflowViewState.IdRef="Seq_Twilio_Ok">
+                      <ui:DeserializeJson JsonObject="[J]" JsonString="[Response]"
+                        sap2010:WorkflowViewState.IdRef="Deser_Ok" />
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_Sid">
+                        <Assign.To><OutArgument x:TypeArguments="x:String">[out_MessageId]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="x:String">[If(J("sid") Is Nothing, "", J("sid").ToString())]</InArgument></Assign.Value>
+                      </Assign>
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_Ok_Bool">
+                        <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_Success]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="x:Boolean">[True]</InArgument></Assign.Value>
+                      </Assign>
+                    </Sequence>
+                  </If.Then>
+                  <If.Else>
+                    <Sequence sap2010:WorkflowViewState.IdRef="Seq_Twilio_Err">
+                      <ui:DeserializeJson JsonObject="[J]"
+                        JsonString="[If(String.IsNullOrWhiteSpace(Response), &quot;{}&quot;, Response)]"
+                        sap2010:WorkflowViewState.IdRef="Deser_Err" />
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_Twilio_Code">
+                        <Assign.To><OutArgument x:TypeArguments="x:String">[out_ErrorCode]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="x:String">[If(J("code") IsNot Nothing, "TWILIO_" &amp; J("code").ToString(), "TWILIO_HTTP_" &amp; StatusCode.ToString())]</InArgument></Assign.Value>
+                      </Assign>
+                      <Assign sap2010:WorkflowViewState.IdRef="Assign_Twilio_Retry">
+                        <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_Retryable]</OutArgument></Assign.To>
+                        <Assign.Value><InArgument x:TypeArguments="x:Boolean">[StatusCode = 429 OrElse StatusCode &gt;= 500]</InArgument></Assign.Value>
+                      </Assign>
+                    </Sequence>
+                  </If.Else>
+                </If>
+              </Sequence>
+            </TryCatch.Try>
+            <TryCatch.Catches>
+              <Catch x:TypeArguments="s:Exception" sap2010:WorkflowViewState.IdRef="Catch_Twilio">
+                <ActivityAction x:TypeArguments="s:Exception">
+                  <ActivityAction.Argument><DelegateInArgument x:TypeArguments="s:Exception" Name="ex" /></ActivityAction.Argument>
+                  <Sequence sap2010:WorkflowViewState.IdRef="Seq_Catch_Twilio">
+                    <Assign sap2010:WorkflowViewState.IdRef="Assign_Catch_Code">
+                      <Assign.To><OutArgument x:TypeArguments="x:String">[out_ErrorCode]</OutArgument></Assign.To>
+                      <Assign.Value><InArgument x:TypeArguments="x:String">["NETWORK_TIMEOUT"]</InArgument></Assign.Value>
+                    </Assign>
+                    <Assign sap2010:WorkflowViewState.IdRef="Assign_Catch_Retry">
+                      <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_Retryable]</OutArgument></Assign.To>
+                      <Assign.Value><InArgument x:TypeArguments="x:Boolean">[True]</InArgument></Assign.Value>
+                    </Assign>
+                  </Sequence>
+                </ActivityAction>
+              </Catch>
+            </TryCatch.Catches>
+          </TryCatch>
+        </Sequence>
+      </If.Then>
+    </If>
+
+    <ui:LogMessage DisplayName="Log masked result" Level="Info"
+      Message="[&quot;SMS to &quot; &amp; If(in_To.Length &gt;= 9, in_To.Substring(0, 5) &amp; &quot;****&quot; &amp; in_To.Substring(in_To.Length - 4), in_To) &amp; &quot; success=&quot; &amp; out_Success.ToString() &amp; &quot; err=&quot; &amp; out_ErrorCode]"
+      sap2010:WorkflowViewState.IdRef="Log_Done" />
+  </Sequence>
 </Activity>
