@@ -108,7 +108,9 @@ def test_allocate_first_fit_when_no_preference_matches():
     ]
     slot, pass_no = allocate_slot(slots, set(), "NORMAL", 0, "ANY")
     assert slot["slot_id"] == 2  # earlier date wins
-    assert pass_no == 4
+    # With no preferred doctor and no preferred band, every pass has the same
+    # filter, so the first pass finds a candidate.
+    assert pass_no == 1
 
 
 def test_allocate_excludes_blocked_slots():
@@ -264,19 +266,14 @@ def test_reminder_quiet_hours(hms: HmsClient):
 # Conflict resolution — end to end
 # ---------------------------------------------------------------------------
 def test_double_booking_detected_and_resolved(hms: HmsClient):
-    # Plant a real, reachable double-booking
-    r = hms.request("POST", "/admin/plant-double-booking")
-    assert r.status_code == 200, r.text
-
-    # Sweep to raise the conflict
+    # The seed already plants one reachable double-booking; sweep raises it.
     sweep = conflict_sweep(hms)
     assert sweep["detected"] >= 1
 
-    # Resolve the OPEN conflicts
     resolution = conflict_resolve(hms)
     assert resolution["resolved"] + resolution["escalated"] >= 1
 
-    # After resolution, no OPEN double-bookings remain from this run
+    # After resolution, no OPEN double-bookings remain
     r = hms.request("GET", "/conflicts?status=OPEN&type=DOUBLE_BOOKING")
     remaining = [c for c in r.json() if c["conflict_type"] == "DOUBLE_BOOKING"]
     assert len(remaining) == 0, f"still open: {remaining}"
