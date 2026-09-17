@@ -131,14 +131,11 @@ Live:    POST /v3/mail/send with Bearer auth; 202 = success (empty body).
                   Body="[JsonBody]"
                   BodyFormat="application/json"
                   ContinueOnError="True"
-                  ResponseContent="[Response]"
+                  Result="[Response]"
                   StatusCode="[StatusCode]"
                   TimeoutMS="30000">
                   <uwa:HttpClient.Headers>
-                    <scg:Dictionary x:TypeArguments="x:String, x:String">
-                      <x:String x:Key="Authorization">[&quot;Bearer &quot; &amp; ApiKeyPlain]</x:String>
-                      <x:String x:Key="Accept">application/json</x:String>
-                    </scg:Dictionary>
+                    <InArgument x:TypeArguments="scg:Dictionary(x:String, x:String)">[New Dictionary(Of String, String) From {{"Authorization", "Bearer " &amp; ApiKeyPlain}, {"Accept", "application/json"}}]</InArgument>
                   </uwa:HttpClient.Headers>
                 </uwa:HttpClient>
 
