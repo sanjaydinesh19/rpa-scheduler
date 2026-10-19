@@ -1,0 +1,77 @@
+<Activity mc:Ignorable="sap sap2010" x:Class="Debug"
+ xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+ xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+ xmlns:s="clr-namespace:System;assembly=System.Private.CoreLib"
+ xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
+ xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
+ xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib"
+ xmlns:ui="http://schemas.uipath.com/workflow/activities"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <sap2010:ExpressionActivityEditor.ExpressionActivityEditor>VisualBasic</sap2010:ExpressionActivityEditor.ExpressionActivityEditor>
+  <TextExpression.NamespacesForImplementation>
+    <scg:List x:TypeArguments="x:String" Capacity="4">
+      <x:String>System</x:String>
+      <x:String>System.Collections.Generic</x:String>
+      <x:String>UiPath.Core</x:String>
+      <x:String>UiPath.Core.Activities</x:String>
+    </scg:List>
+  </TextExpression.NamespacesForImplementation>
+  <TextExpression.ReferencesForImplementation>
+    <scg:List x:TypeArguments="AssemblyReference" Capacity="4">
+      <AssemblyReference>UiPath.System.Activities</AssemblyReference>
+    </scg:List>
+  </TextExpression.ReferencesForImplementation>
+
+  <Sequence DisplayName="Debug launcher" sap2010:WorkflowViewState.IdRef="Seq_Root">
+    <sap2010:Annotation.AnnotationText>Click Debug File (F6) on THIS workflow. It runs Main.xaml twice — once in
+SWEEP mode to detect and enqueue conflicts, once in QUEUE mode to resolve them.
+
+Prereq: Mock HMS running at http://localhost:5000 with REQUIRE_API_KEY=false.
+The seed plants one double-booking automatically; for more conflicts, POST
+/api/v1/admin/plant-double-booking or /plant-unavailability first.</sap2010:Annotation.AnnotationText>
+    <Sequence.Variables>
+      <Variable x:TypeArguments="x:Int32" Name="SweepDetected" />
+      <Variable x:TypeArguments="x:Int32" Name="SweepResolved" />
+      <Variable x:TypeArguments="x:Int32" Name="SweepEscalated" />
+      <Variable x:TypeArguments="x:Int32" Name="QueueDetected" />
+      <Variable x:TypeArguments="x:Int32" Name="QueueResolved" />
+      <Variable x:TypeArguments="x:Int32" Name="QueueEscalated" />
+    </Sequence.Variables>
+
+    <ui:InvokeWorkflowFile DisplayName="Run SWEEP mode"
+      sap2010:WorkflowViewState.IdRef="Invoke_Sweep"
+      WorkflowFileName="Main.xaml">
+      <ui:InvokeWorkflowFile.Arguments>
+        <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">["http://localhost:5000"]</InArgument>
+        <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[New System.Net.NetworkCredential("", "").SecurePassword]</InArgument>
+        <InArgument x:TypeArguments="x:String" x:Key="in_Mode">["SWEEP"]</InArgument>
+        <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxItems">[20]</InArgument>
+        <OutArgument x:TypeArguments="x:Int32" x:Key="out_Detected">[SweepDetected]</OutArgument>
+        <OutArgument x:TypeArguments="x:Int32" x:Key="out_Resolved">[SweepResolved]</OutArgument>
+        <OutArgument x:TypeArguments="x:Int32" x:Key="out_Escalated">[SweepEscalated]</OutArgument>
+      </ui:InvokeWorkflowFile.Arguments>
+    </ui:InvokeWorkflowFile>
+
+    <ui:LogMessage DisplayName="Log sweep" Level="Info"
+      Message="[&quot;SWEEP finished. Detected=&quot; &amp; SweepDetected.ToString()]"
+      sap2010:WorkflowViewState.IdRef="Log_Sweep" />
+
+    <ui:InvokeWorkflowFile DisplayName="Run QUEUE mode"
+      sap2010:WorkflowViewState.IdRef="Invoke_Queue"
+      WorkflowFileName="Main.xaml">
+      <ui:InvokeWorkflowFile.Arguments>
+        <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">["http://localhost:5000"]</InArgument>
+        <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[New System.Net.NetworkCredential("", "").SecurePassword]</InArgument>
+        <InArgument x:TypeArguments="x:String" x:Key="in_Mode">["QUEUE"]</InArgument>
+        <InArgument x:TypeArguments="x:Int32" x:Key="in_MaxItems">[20]</InArgument>
+        <OutArgument x:TypeArguments="x:Int32" x:Key="out_Detected">[QueueDetected]</OutArgument>
+        <OutArgument x:TypeArguments="x:Int32" x:Key="out_Resolved">[QueueResolved]</OutArgument>
+        <OutArgument x:TypeArguments="x:Int32" x:Key="out_Escalated">[QueueEscalated]</OutArgument>
+      </ui:InvokeWorkflowFile.Arguments>
+    </ui:InvokeWorkflowFile>
+
+    <ui:LogMessage DisplayName="Log summary" Level="Info"
+      Message="[&quot;Debug run finished. SWEEP detected=&quot; &amp; SweepDetected.ToString() &amp; &quot; | QUEUE resolved=&quot; &amp; QueueResolved.ToString() &amp; &quot; escalated=&quot; &amp; QueueEscalated.ToString()]"
+      sap2010:WorkflowViewState.IdRef="Log_End" />
+  </Sequence>
+</Activity>
