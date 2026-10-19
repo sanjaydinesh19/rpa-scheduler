@@ -48,8 +48,8 @@
       <Variable x:TypeArguments="x:String" Name="ResponseJson" />
       <Variable x:TypeArguments="x:String" Name="ErrorCode" />
       <Variable x:TypeArguments="x:Boolean" Name="Retryable" />
-      <Variable x:TypeArguments="njl:JArray" Name="Due24" />
-      <Variable x:TypeArguments="njl:JArray" Name="Due2" />
+      <Variable x:TypeArguments="njl:JArray" Name="Due24" Default="[New Newtonsoft.Json.Linq.JArray()]" />
+      <Variable x:TypeArguments="njl:JArray" Name="Due2" Default="[New Newtonsoft.Json.Linq.JArray()]" />
       <Variable x:TypeArguments="njl:JArray" Name="AllDue" />
       <Variable x:TypeArguments="x:Int32" Default="[0]" Name="Idx" />
       <Variable x:TypeArguments="njl:JObject" Name="Item" />
@@ -66,7 +66,7 @@
       <Variable x:TypeArguments="x:Boolean" Name="SmsConsent" />
       <Variable x:TypeArguments="x:Boolean" Name="EmailConsent" />
       <Variable x:TypeArguments="x:String" Name="PrefChannel" />
-      <Variable x:TypeArguments="scg:List(x:String)" Name="Channels" />
+      <Variable x:TypeArguments="scg:List(x:String)" Name="Channels" Default="[New System.Collections.Generic.List(Of String)()]" />
       <Variable x:TypeArguments="x:Boolean" Name="AlreadySent" />
       <Variable x:TypeArguments="x:String" Name="MsgBody" />
       <Variable x:TypeArguments="x:Boolean" Name="NotifOk" />
@@ -170,15 +170,8 @@
               <InArgument x:TypeArguments="njl:JArray">[If(StatusCode &gt;= 200 AndAlso StatusCode &lt; 300, Newtonsoft.Json.Linq.JArray.Parse(ResponseJson), New Newtonsoft.Json.Linq.JArray())]</InArgument>
             </Assign.Value>
           </Assign>
-          <ui:InvokeCode ContinueOnError="{x:Null}" Code="Dim merged As New Newtonsoft.Json.Linq.JArray() : For Each t As Newtonsoft.Json.Linq.JToken In in_D24 : CType(t, Newtonsoft.Json.Linq.JObject)(&quot;reminder_type&quot;) = &quot;REMINDER_24H&quot; : merged.Add(t) : Next : For Each t2 As Newtonsoft.Json.Linq.JToken In in_D2 : CType(t2, Newtonsoft.Json.Linq.JObject)(&quot;reminder_type&quot;) = &quot;REMINDER_2H&quot; : merged.Add(t2) : Next : out_All = merged" DisplayName="Tag with reminder type" sap2010:WorkflowViewState.IdRef="InvokeCode_Merge">
-            <ui:InvokeCode.Arguments>
-              <InArgument x:TypeArguments="njl:JArray" x:Key="in_D24">[Due24]</InArgument>
-              <InArgument x:TypeArguments="njl:JArray" x:Key="in_D2">[Due2]</InArgument>
-              <OutArgument x:TypeArguments="njl:JArray" x:Key="out_All">[AllDue]</OutArgument>
-            </ui:InvokeCode.Arguments>
-          </ui:InvokeCode>
           <ui:LogMessage DisplayName="Log due" sap2010:WorkflowViewState.IdRef="Log_Due" Level="Info" Message="[&quot;Reminders due: 24H=&quot; &amp; Due24.Count.ToString() &amp; &quot; 2H=&quot; &amp; Due2.Count.ToString()]" />
-          <While DisplayName="For each due" sap:VirtualizedContainerService.HintSize="694.4,1906.4" sap2010:WorkflowViewState.IdRef="While_Due" Condition="[Idx &lt; AllDue.Count]">
+          <While DisplayName="For each due" sap:VirtualizedContainerService.HintSize="694.4,1906.4" sap2010:WorkflowViewState.IdRef="While_Due" Condition="[Idx &lt; (Due24.Count + Due2.Count)]">
             <Sequence sap:VirtualizedContainerService.HintSize="649.6,1724" sap2010:WorkflowViewState.IdRef="Seq_One">
               <sap:WorkflowViewStateService.ViewState>
                 <scg:Dictionary x:TypeArguments="x:String, x:Object">
@@ -190,7 +183,7 @@
                   <OutArgument x:TypeArguments="njl:JObject">[Item]</OutArgument>
                 </Assign.To>
                 <Assign.Value>
-                  <InArgument x:TypeArguments="njl:JObject">[CType(AllDue(Idx), Newtonsoft.Json.Linq.JObject)]</InArgument>
+                  <InArgument x:TypeArguments="njl:JObject">[If(Idx &lt; Due24.Count, CType(Due24(Idx), Newtonsoft.Json.Linq.JObject), CType(Due2(Idx - Due24.Count), Newtonsoft.Json.Linq.JObject))]</InArgument>
                 </Assign.Value>
               </Assign>
               <Assign sap:VirtualizedContainerService.HintSize="616,174.4" sap2010:WorkflowViewState.IdRef="Assign_Type">
@@ -198,7 +191,7 @@
                   <OutArgument x:TypeArguments="x:String">[ReminderType]</OutArgument>
                 </Assign.To>
                 <Assign.Value>
-                  <InArgument x:TypeArguments="x:String">[Item("reminder_type").ToString()]</InArgument>
+                  <InArgument x:TypeArguments="x:String">[If(Idx &lt; Due24.Count, "REMINDER_24H", "REMINDER_2H")]</InArgument>
                 </Assign.Value>
               </Assign>
               <Assign sap:VirtualizedContainerService.HintSize="616,174.4" sap2010:WorkflowViewState.IdRef="Assign_ApId">
@@ -345,18 +338,14 @@
                         <x:Boolean x:Key="IsExpanded">True</x:Boolean>
                       </scg:Dictionary>
                     </sap:WorkflowViewStateService.ViewState>
-                    <ui:InvokeCode ContinueOnError="{x:Null}" Code="Dim result As New System.Collections.Generic.List(Of String)() : Dim smsOk As Boolean = in_SmsConsent AndAlso Not String.IsNullOrEmpty(in_Phone) AndAlso System.Text.RegularExpressions.Regex.IsMatch(in_Phone, &quot;^\+[1-9]\d{9,14}$&quot;) : Dim emOk As Boolean = in_EmailConsent AndAlso Not String.IsNullOrEmpty(in_Email) AndAlso in_Email.Contains(&quot;@&quot;) : Dim escalate As Boolean = (in_Type = &quot;REMINDER_2H&quot;) AndAlso (in_Priority = &quot;URGENT&quot; OrElse in_Priority = &quot;HIGH&quot;) : Dim useBoth As Boolean = escalate OrElse in_Pref = &quot;BOTH&quot; : Dim preferEmail As Boolean = (in_Pref = &quot;EMAIL&quot;) : Dim useSms As Boolean = smsOk AndAlso (useBoth OrElse Not preferEmail OrElse Not emOk) : Dim useEmail As Boolean = emOk AndAlso (useBoth OrElse preferEmail OrElse Not smsOk) : If useSms Then result.Add(&quot;SMS&quot;) : If useEmail Then result.Add(&quot;EMAIL&quot;) : out_Channels = result" DisplayName="Resolve channels" sap:VirtualizedContainerService.HintSize="416,196.8" sap2010:WorkflowViewState.IdRef="InvokeCode_Chan">
-                      <ui:InvokeCode.Arguments>
-                        <InArgument x:TypeArguments="x:String" x:Key="in_Type">[ReminderType]</InArgument>
-                        <InArgument x:TypeArguments="x:String" x:Key="in_Priority">[Priority]</InArgument>
-                        <InArgument x:TypeArguments="x:String" x:Key="in_Pref">[PrefChannel]</InArgument>
-                        <InArgument x:TypeArguments="x:Boolean" x:Key="in_SmsConsent">[SmsConsent]</InArgument>
-                        <InArgument x:TypeArguments="x:Boolean" x:Key="in_EmailConsent">[EmailConsent]</InArgument>
-                        <InArgument x:TypeArguments="x:String" x:Key="in_Phone">[Phone]</InArgument>
-                        <InArgument x:TypeArguments="x:String" x:Key="in_Email">[Email]</InArgument>
-                        <OutArgument x:TypeArguments="scg:List(x:String)" x:Key="out_Channels">[Channels]</OutArgument>
-                      </ui:InvokeCode.Arguments>
-                    </ui:InvokeCode>
+                    <Assign DisplayName="Resolve channels" sap2010:WorkflowViewState.IdRef="Assign_Chan">
+                      <Assign.To>
+                        <OutArgument x:TypeArguments="scg:List(x:String)">[Channels]</OutArgument>
+                      </Assign.To>
+                      <Assign.Value>
+                        <InArgument x:TypeArguments="scg:List(x:String)">[(New String() {If(SmsConsent AndAlso Not String.IsNullOrEmpty(Phone) AndAlso System.Text.RegularExpressions.Regex.IsMatch(Phone, &quot;^\+[1-9]\d{9,14}$&quot;) AndAlso (((ReminderType = &quot;REMINDER_2H&quot;) AndAlso (Priority = &quot;URGENT&quot; OrElse Priority = &quot;HIGH&quot;)) OrElse PrefChannel = &quot;BOTH&quot; OrElse PrefChannel &lt;&gt; &quot;EMAIL&quot; OrElse Not (EmailConsent AndAlso Not String.IsNullOrEmpty(Email) AndAlso Email.Contains(&quot;@&quot;))), &quot;SMS&quot;, Nothing), If(EmailConsent AndAlso Not String.IsNullOrEmpty(Email) AndAlso Email.Contains(&quot;@&quot;) AndAlso (((ReminderType = &quot;REMINDER_2H&quot;) AndAlso (Priority = &quot;URGENT&quot; OrElse Priority = &quot;HIGH&quot;)) OrElse PrefChannel = &quot;BOTH&quot; OrElse PrefChannel = &quot;EMAIL&quot; OrElse Not (SmsConsent AndAlso Not String.IsNullOrEmpty(Phone) AndAlso System.Text.RegularExpressions.Regex.IsMatch(Phone, &quot;^\+[1-9]\d{9,14}$&quot;))), &quot;EMAIL&quot;, Nothing)}).Where(Function(s) s IsNot Nothing).ToList()]</InArgument>
+                      </Assign.Value>
+                    </Assign>
                     <If Condition="[Channels.Count = 0]" sap:VirtualizedContainerService.HintSize="416,201.6" sap2010:WorkflowViewState.IdRef="If_NoChan">
                       <If.Then>
                         <Sequence DisplayName="Then" sap2010:WorkflowViewState.IdRef="Seq_NoChan">
