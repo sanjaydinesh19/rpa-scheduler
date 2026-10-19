@@ -1,40 +1,34 @@
-<Activity mc:Ignorable="sap sap2010" x:Class="Main"
- xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
- xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
- xmlns:s="clr-namespace:System;assembly=System.Private.CoreLib"
- xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
- xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
- xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib"
- xmlns:sd="clr-namespace:System.Data;assembly=System.Data.Common"
- xmlns:ui="http://schemas.uipath.com/workflow/activities"
- xmlns:jl="clr-namespace:Newtonsoft.Json.Linq;assembly=Newtonsoft.Json"
- xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+<Activity mc:Ignorable="sap sap2010" x:Class="Main" xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:njl="clr-namespace:Newtonsoft.Json.Linq;assembly=Newtonsoft.Json" xmlns:s="clr-namespace:System;assembly=System.Private.CoreLib" xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation" xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation" xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib" xmlns:ss="clr-namespace:System.Security;assembly=System.Private.CoreLib" xmlns:ui="http://schemas.uipath.com/workflow/activities" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <x:Members>
     <x:Property Name="in_BaseUrl" Type="InArgument(x:String)" />
-    <x:Property Name="in_ApiKey" Type="InArgument(s:Security.SecureString)" />
+    <x:Property Name="in_ApiKey" Type="InArgument(ss:SecureString)" />
     <x:Property Name="in_DryRun" Type="InArgument(x:Boolean)" />
     <x:Property Name="in_NowOverride" Type="InArgument(x:String)" />
     <x:Property Name="in_HospitalName" Type="InArgument(x:String)" />
     <x:Property Name="in_TwilioSid" Type="InArgument(x:String)" />
-    <x:Property Name="in_TwilioAuth" Type="InArgument(s:Security.SecureString)" />
+    <x:Property Name="in_TwilioAuth" Type="InArgument(ss:SecureString)" />
     <x:Property Name="in_TwilioFrom" Type="InArgument(x:String)" />
-    <x:Property Name="in_SendGridKey" Type="InArgument(s:Security.SecureString)" />
+    <x:Property Name="in_SendGridKey" Type="InArgument(ss:SecureString)" />
     <x:Property Name="in_SendGridFrom" Type="InArgument(x:String)" />
     <x:Property Name="out_Sent" Type="OutArgument(x:Int32)" />
     <x:Property Name="out_Skipped" Type="OutArgument(x:Int32)" />
     <x:Property Name="out_Failed" Type="OutArgument(x:Int32)" />
   </x:Members>
   <sap2010:ExpressionActivityEditor.ExpressionActivityEditor>VisualBasic</sap2010:ExpressionActivityEditor.ExpressionActivityEditor>
+  <sap2010:WorkflowViewState.IdRef>ActivityBuilder_1</sap2010:WorkflowViewState.IdRef>
   <TextExpression.NamespacesForImplementation>
-    <scg:List x:TypeArguments="x:String" Capacity="8">
+    <scg:List x:TypeArguments="x:String" Capacity="16">
+      <x:String>GlobalConstantsNamespace</x:String>
+      <x:String>GlobalVariablesNamespace</x:String>
+      <x:String>Newtonsoft.Json.Linq</x:String>
       <x:String>System</x:String>
       <x:String>System.Collections.Generic</x:String>
+      <x:String>System.Collections.ObjectModel</x:String>
       <x:String>System.Data</x:String>
       <x:String>System.Linq</x:String>
       <x:String>System.Text.RegularExpressions</x:String>
       <x:String>UiPath.Core</x:String>
       <x:String>UiPath.Core.Activities</x:String>
-      <x:String>Newtonsoft.Json.Linq</x:String>
     </scg:List>
   </TextExpression.NamespacesForImplementation>
   <TextExpression.ReferencesForImplementation>
@@ -44,28 +38,21 @@
       <AssemblyReference>UiPath.System.Activities</AssemblyReference>
       <AssemblyReference>UiPath.Web.Activities</AssemblyReference>
       <AssemblyReference>Newtonsoft.Json</AssemblyReference>
+      <AssemblyReference>System.ObjectModel</AssemblyReference>
+      <AssemblyReference>System.ComponentModel.TypeConverter</AssemblyReference>
     </scg:List>
   </TextExpression.ReferencesForImplementation>
-
-  <Sequence DisplayName="Reminder Bot" sap2010:WorkflowViewState.IdRef="Seq_Root">
-    <sap2010:Annotation.AnnotationText>REMINDER BOT — REST-driven.
-
-Time trigger. Pulls T-24h and T-2h due reminders from the HMS, resolves channel
-per consent + escalation rules, renders the message, sends via SendSMS or
-SendEmail, and POSTs a notification row so re-runs are idempotent.
-
-Quiet hours (07:00-21:00 local) are enforced by the trigger schedule AND
-belt-and-braces here: a run outside quiet hours logs and returns.</sap2010:Annotation.AnnotationText>
+  <Sequence sap2010:Annotation.AnnotationText="REMINDER BOT — REST-driven. Time trigger. Pulls T-24h and T-2h due reminders from the HMS, resolves channel per consent + escalation rules, renders the message, sends via SendSMS or SendEmail, and POSTs a notification row so re-runs are idempotent. Quiet hours (07:00-21:00 local) are enforced by the trigger schedule AND belt-and-braces here: a run outside quiet hours logs and returns." DisplayName="Reminder Bot" sap:VirtualizedContainerService.HintSize="897.2,3774.4" sap2010:WorkflowViewState.IdRef="Seq_Root">
     <Sequence.Variables>
       <Variable x:TypeArguments="x:Int32" Name="StatusCode" />
       <Variable x:TypeArguments="x:String" Name="ResponseJson" />
       <Variable x:TypeArguments="x:String" Name="ErrorCode" />
       <Variable x:TypeArguments="x:Boolean" Name="Retryable" />
-      <Variable x:TypeArguments="jl:JArray" Name="Due24" />
-      <Variable x:TypeArguments="jl:JArray" Name="Due2" />
-      <Variable x:TypeArguments="jl:JArray" Name="AllDue" />
-      <Variable x:TypeArguments="x:Int32" Name="Idx" Default="[0]" />
-      <Variable x:TypeArguments="jl:JObject" Name="Item" />
+      <Variable x:TypeArguments="njl:JArray" Name="Due24" />
+      <Variable x:TypeArguments="njl:JArray" Name="Due2" />
+      <Variable x:TypeArguments="njl:JArray" Name="AllDue" />
+      <Variable x:TypeArguments="x:Int32" Default="[0]" Name="Idx" />
+      <Variable x:TypeArguments="njl:JObject" Name="Item" />
       <Variable x:TypeArguments="x:String" Name="ReminderType" />
       <Variable x:TypeArguments="x:Int32" Name="ApptId" />
       <Variable x:TypeArguments="x:String" Name="ApptRef" />
@@ -86,52 +73,63 @@ belt-and-braces here: a run outside quiet hours logs and returns.</sap2010:Annot
       <Variable x:TypeArguments="x:String" Name="NotifId" />
       <Variable x:TypeArguments="x:String" Name="NotifError" />
       <Variable x:TypeArguments="x:Boolean" Name="NotifRetryable" />
-      <Variable x:TypeArguments="jl:JObject" Name="J" />
+      <Variable x:TypeArguments="njl:JObject" Name="J" />
       <Variable x:TypeArguments="s:DateTime" Name="Now" />
       <Variable x:TypeArguments="x:String" Name="NowQs" />
       <Variable x:TypeArguments="x:String" Name="CurrentChannel" />
     </Sequence.Variables>
-
-    <Assign DisplayName="Init counters" sap2010:WorkflowViewState.IdRef="Assign_InitSent">
-      <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Sent]</OutArgument></Assign.To>
-      <Assign.Value><InArgument x:TypeArguments="x:Int32">[0]</InArgument></Assign.Value>
+    <sap:WorkflowViewStateService.ViewState>
+      <scg:Dictionary x:TypeArguments="x:String, x:Object">
+        <x:Boolean x:Key="IsExpanded">True</x:Boolean>
+      </scg:Dictionary>
+    </sap:WorkflowViewStateService.ViewState>
+    <Assign DisplayName="Init counters" sap:VirtualizedContainerService.HintSize="729.6,174.4" sap2010:WorkflowViewState.IdRef="Assign_InitSent">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:Int32">[out_Sent]</OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:Int32">[0]</InArgument>
+      </Assign.Value>
     </Assign>
-
-    <Assign DisplayName="Resolve now" sap2010:WorkflowViewState.IdRef="Assign_Now">
-      <Assign.To><OutArgument x:TypeArguments="s:DateTime">[Now]</OutArgument></Assign.To>
-      <Assign.Value><InArgument x:TypeArguments="s:DateTime">[If(String.IsNullOrWhiteSpace(in_NowOverride), DateTime.Now, DateTime.Parse(in_NowOverride))]</InArgument></Assign.Value>
+    <Assign DisplayName="Resolve now" sap:VirtualizedContainerService.HintSize="729.6,174.4" sap2010:WorkflowViewState.IdRef="Assign_Now">
+      <Assign.To>
+        <OutArgument x:TypeArguments="s:DateTime">[Now]</OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="s:DateTime">[If(String.IsNullOrWhiteSpace(in_NowOverride), DateTime.Now, DateTime.Parse(in_NowOverride))]</InArgument>
+      </Assign.Value>
     </Assign>
-
-    <Assign DisplayName="Build now= query"
-      sap2010:WorkflowViewState.IdRef="Assign_NowQs">
-      <Assign.To><OutArgument x:TypeArguments="x:String">[NowQs]</OutArgument></Assign.To>
-      <Assign.Value><InArgument x:TypeArguments="x:String">[If(String.IsNullOrWhiteSpace(in_NowOverride), "", "&amp;now=" &amp; System.Net.WebUtility.UrlEncode(in_NowOverride))]</InArgument></Assign.Value>
+    <Assign DisplayName="Build now= query" sap:VirtualizedContainerService.HintSize="729.6,174.4" sap2010:WorkflowViewState.IdRef="Assign_NowQs">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">[NowQs]</OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">[If(String.IsNullOrWhiteSpace(in_NowOverride), "", "&amp;now=" &amp; System.Net.WebUtility.UrlEncode(in_NowOverride))]</InArgument>
+      </Assign.Value>
     </Assign>
-
-    <ui:LogMessage DisplayName="Log start" Level="Info"
-      Message="[&quot;ReminderBot starting. DryRun=&quot; &amp; in_DryRun.ToString() &amp; &quot; now=&quot; &amp; Now.ToString(&quot;o&quot;)]"
-      sap2010:WorkflowViewState.IdRef="Log_Start" />
-
-    <If DisplayName="Quiet hours gate"
-      Condition="[Now.Hour &lt; 7 OrElse Now.Hour &gt;= 21]"
-      sap2010:WorkflowViewState.IdRef="If_Quiet">
+    <ui:LogMessage DisplayName="Log start" sap:VirtualizedContainerService.HintSize="729.6,174.4" sap2010:WorkflowViewState.IdRef="Log_Start" Level="Info" Message="[&quot;ReminderBot starting. DryRun=&quot; &amp; in_DryRun.ToString() &amp; &quot; now=&quot; &amp; Now.ToString(&quot;o&quot;)]" />
+    <If Condition="[Now.Hour &lt; 7 OrElse Now.Hour &gt;= 21]" DisplayName="Quiet hours gate" sap:VirtualizedContainerService.HintSize="729.6,2888" sap2010:WorkflowViewState.IdRef="If_Quiet">
       <If.Then>
-        <Sequence sap2010:WorkflowViewState.IdRef="Seq_Quiet">
-          <ui:LogMessage Level="Info"
-            Message="[&quot;Quiet hours (&quot; &amp; Now.Hour.ToString() &amp; &quot;h) — no reminders sent&quot;]"
-            sap2010:WorkflowViewState.IdRef="Log_Quiet" />
+        <Sequence DisplayName="Then" sap:VirtualizedContainerService.HintSize="728,225.6" sap2010:WorkflowViewState.IdRef="Seq_Quiet">
+          <sap:WorkflowViewStateService.ViewState>
+            <scg:Dictionary x:TypeArguments="x:String, x:Object">
+              <x:Boolean x:Key="IsExpanded">True</x:Boolean>
+            </scg:Dictionary>
+          </sap:WorkflowViewStateService.ViewState>
+          <ui:LogMessage sap:VirtualizedContainerService.HintSize="694.4,165.6" sap2010:WorkflowViewState.IdRef="Log_Quiet" Level="Info" Message="[&quot;Quiet hours (&quot; &amp; Now.Hour.ToString() &amp; &quot;h) — no reminders sent&quot;]" />
         </Sequence>
       </If.Then>
       <If.Else>
-        <Sequence DisplayName="Active window" sap2010:WorkflowViewState.IdRef="Seq_Active">
-
-          <!-- Fetch 24h due -->
-          <ui:InvokeWorkflowFile DisplayName="GET reminders/due?24H"
-            sap2010:WorkflowViewState.IdRef="Invoke_Get24"
-            WorkflowFileName="..\..\shared\HMS_Client.xaml">
+        <Sequence DisplayName="Active window" sap:VirtualizedContainerService.HintSize="728,2492" sap2010:WorkflowViewState.IdRef="Seq_Active">
+          <sap:WorkflowViewStateService.ViewState>
+            <scg:Dictionary x:TypeArguments="x:String, x:Object">
+              <x:Boolean x:Key="IsExpanded">True</x:Boolean>
+            </scg:Dictionary>
+          </sap:WorkflowViewStateService.ViewState>
+          <ui:InvokeWorkflowFile ArgumentsVariable="{x:Null}" ContinueOnError="{x:Null}" DisplayName="GET reminders/due?24H" sap:VirtualizedContainerService.HintSize="694.4,145.6" sap2010:WorkflowViewState.IdRef="Invoke_Get24" UnSafe="False" WorkflowFileName="..\..\shared\HMS_Client.xaml">
             <ui:InvokeWorkflowFile.Arguments>
               <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
-              <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+              <InArgument x:TypeArguments="ss:SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
               <InArgument x:TypeArguments="x:String" x:Key="in_Method">["GET"]</InArgument>
               <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/reminders/due?window=24H" &amp; NowQs]</InArgument>
               <InArgument x:TypeArguments="x:String" x:Key="in_Body">[""]</InArgument>
@@ -142,19 +140,18 @@ belt-and-braces here: a run outside quiet hours logs and returns.</sap2010:Annot
               <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
             </ui:InvokeWorkflowFile.Arguments>
           </ui:InvokeWorkflowFile>
-
-          <Assign sap2010:WorkflowViewState.IdRef="Assign_Due24">
-            <Assign.To><OutArgument x:TypeArguments="jl:JArray">[Due24]</OutArgument></Assign.To>
-            <Assign.Value><InArgument x:TypeArguments="jl:JArray">[If(StatusCode &gt;= 200 AndAlso StatusCode &lt; 300, Newtonsoft.Json.Linq.JArray.Parse(ResponseJson), New Newtonsoft.Json.Linq.JArray())]</InArgument></Assign.Value>
+          <Assign sap:VirtualizedContainerService.HintSize="694.4,174.4" sap2010:WorkflowViewState.IdRef="Assign_Due24">
+            <Assign.To>
+              <OutArgument x:TypeArguments="njl:JArray">[Due24]</OutArgument>
+            </Assign.To>
+            <Assign.Value>
+              <InArgument x:TypeArguments="njl:JArray">[If(StatusCode &gt;= 200 AndAlso StatusCode &lt; 300, Newtonsoft.Json.Linq.JArray.Parse(ResponseJson), New Newtonsoft.Json.Linq.JArray())]</InArgument>
+            </Assign.Value>
           </Assign>
-
-          <!-- Fetch 2h due -->
-          <ui:InvokeWorkflowFile DisplayName="GET reminders/due?2H"
-            sap2010:WorkflowViewState.IdRef="Invoke_Get2"
-            WorkflowFileName="..\..\shared\HMS_Client.xaml">
+          <ui:InvokeWorkflowFile ArgumentsVariable="{x:Null}" ContinueOnError="{x:Null}" DisplayName="GET reminders/due?2H" sap:VirtualizedContainerService.HintSize="694.4,145.6" sap2010:WorkflowViewState.IdRef="Invoke_Get2" UnSafe="False" WorkflowFileName="..\..\shared\HMS_Client.xaml">
             <ui:InvokeWorkflowFile.Arguments>
               <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
-              <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+              <InArgument x:TypeArguments="ss:SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
               <InArgument x:TypeArguments="x:String" x:Key="in_Method">["GET"]</InArgument>
               <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/reminders/due?window=2H" &amp; NowQs]</InArgument>
               <InArgument x:TypeArguments="x:String" x:Key="in_Body">[""]</InArgument>
@@ -165,121 +162,145 @@ belt-and-braces here: a run outside quiet hours logs and returns.</sap2010:Annot
               <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
             </ui:InvokeWorkflowFile.Arguments>
           </ui:InvokeWorkflowFile>
-
           <Assign sap2010:WorkflowViewState.IdRef="Assign_Due2">
-            <Assign.To><OutArgument x:TypeArguments="jl:JArray">[Due2]</OutArgument></Assign.To>
-            <Assign.Value><InArgument x:TypeArguments="jl:JArray">[If(StatusCode &gt;= 200 AndAlso StatusCode &lt; 300, Newtonsoft.Json.Linq.JArray.Parse(ResponseJson), New Newtonsoft.Json.Linq.JArray())]</InArgument></Assign.Value>
+            <Assign.To>
+              <OutArgument x:TypeArguments="njl:JArray">[Due2]</OutArgument>
+            </Assign.To>
+            <Assign.Value>
+              <InArgument x:TypeArguments="njl:JArray">[If(StatusCode &gt;= 200 AndAlso StatusCode &lt; 300, Newtonsoft.Json.Linq.JArray.Parse(ResponseJson), New Newtonsoft.Json.Linq.JArray())]</InArgument>
+            </Assign.Value>
           </Assign>
-
-          <!-- Merge and tag with type -->
-          <ui:InvokeCode DisplayName="Tag with reminder type"
-            sap2010:WorkflowViewState.IdRef="InvokeCode_Merge"
-            Language="VBNet"
-            Code="Dim merged As New Newtonsoft.Json.Linq.JArray()
-For Each t As Newtonsoft.Json.Linq.JToken In in_D24
-    Dim o As Newtonsoft.Json.Linq.JObject = CType(t, Newtonsoft.Json.Linq.JObject)
-    o(&quot;reminder_type&quot;) = &quot;REMINDER_24H&quot;
-    merged.Add(o)
-Next
-For Each t As Newtonsoft.Json.Linq.JToken In in_D2
-    Dim o As Newtonsoft.Json.Linq.JObject = CType(t, Newtonsoft.Json.Linq.JObject)
-    o(&quot;reminder_type&quot;) = &quot;REMINDER_2H&quot;
-    merged.Add(o)
-Next
-out_All = merged">
+          <ui:InvokeCode ContinueOnError="{x:Null}" Code="Dim merged As New Newtonsoft.Json.Linq.JArray() : For Each t As Newtonsoft.Json.Linq.JToken In in_D24 : CType(t, Newtonsoft.Json.Linq.JObject)(&quot;reminder_type&quot;) = &quot;REMINDER_24H&quot; : merged.Add(t) : Next : For Each t2 As Newtonsoft.Json.Linq.JToken In in_D2 : CType(t2, Newtonsoft.Json.Linq.JObject)(&quot;reminder_type&quot;) = &quot;REMINDER_2H&quot; : merged.Add(t2) : Next : out_All = merged" DisplayName="Tag with reminder type" sap2010:WorkflowViewState.IdRef="InvokeCode_Merge">
             <ui:InvokeCode.Arguments>
-              <InArgument x:TypeArguments="jl:JArray" x:Key="in_D24">[Due24]</InArgument>
-              <InArgument x:TypeArguments="jl:JArray" x:Key="in_D2">[Due2]</InArgument>
-              <OutArgument x:TypeArguments="jl:JArray" x:Key="out_All">[AllDue]</OutArgument>
+              <InArgument x:TypeArguments="njl:JArray" x:Key="in_D24">[Due24]</InArgument>
+              <InArgument x:TypeArguments="njl:JArray" x:Key="in_D2">[Due2]</InArgument>
+              <OutArgument x:TypeArguments="njl:JArray" x:Key="out_All">[AllDue]</OutArgument>
             </ui:InvokeCode.Arguments>
           </ui:InvokeCode>
-
-          <ui:LogMessage DisplayName="Log due" Level="Info"
-            Message="[&quot;Reminders due: 24H=&quot; &amp; Due24.Count.ToString() &amp; &quot; 2H=&quot; &amp; Due2.Count.ToString()]"
-            sap2010:WorkflowViewState.IdRef="Log_Due" />
-
-          <While DisplayName="For each due"
-            Condition="[Idx &lt; AllDue.Count]"
-            sap2010:WorkflowViewState.IdRef="While_Due">
-            <Sequence sap2010:WorkflowViewState.IdRef="Seq_One">
-
-              <Assign sap2010:WorkflowViewState.IdRef="Assign_Item">
-                <Assign.To><OutArgument x:TypeArguments="jl:JObject">[Item]</OutArgument></Assign.To>
-                <Assign.Value><InArgument x:TypeArguments="jl:JObject">[CType(AllDue(Idx), Newtonsoft.Json.Linq.JObject)]</InArgument></Assign.Value>
+          <ui:LogMessage DisplayName="Log due" sap2010:WorkflowViewState.IdRef="Log_Due" Level="Info" Message="[&quot;Reminders due: 24H=&quot; &amp; Due24.Count.ToString() &amp; &quot; 2H=&quot; &amp; Due2.Count.ToString()]" />
+          <While DisplayName="For each due" sap:VirtualizedContainerService.HintSize="694.4,1906.4" sap2010:WorkflowViewState.IdRef="While_Due" Condition="[Idx &lt; AllDue.Count]">
+            <Sequence sap:VirtualizedContainerService.HintSize="649.6,1724" sap2010:WorkflowViewState.IdRef="Seq_One">
+              <sap:WorkflowViewStateService.ViewState>
+                <scg:Dictionary x:TypeArguments="x:String, x:Object">
+                  <x:Boolean x:Key="IsExpanded">True</x:Boolean>
+                </scg:Dictionary>
+              </sap:WorkflowViewStateService.ViewState>
+              <Assign sap:VirtualizedContainerService.HintSize="616,174.4" sap2010:WorkflowViewState.IdRef="Assign_Item">
+                <Assign.To>
+                  <OutArgument x:TypeArguments="njl:JObject">[Item]</OutArgument>
+                </Assign.To>
+                <Assign.Value>
+                  <InArgument x:TypeArguments="njl:JObject">[CType(AllDue(Idx), Newtonsoft.Json.Linq.JObject)]</InArgument>
+                </Assign.Value>
               </Assign>
-
-              <Assign sap2010:WorkflowViewState.IdRef="Assign_Type">
-                <Assign.To><OutArgument x:TypeArguments="x:String">[ReminderType]</OutArgument></Assign.To>
-                <Assign.Value><InArgument x:TypeArguments="x:String">[Item("reminder_type").ToString()]</InArgument></Assign.Value>
+              <Assign sap:VirtualizedContainerService.HintSize="616,174.4" sap2010:WorkflowViewState.IdRef="Assign_Type">
+                <Assign.To>
+                  <OutArgument x:TypeArguments="x:String">[ReminderType]</OutArgument>
+                </Assign.To>
+                <Assign.Value>
+                  <InArgument x:TypeArguments="x:String">[Item("reminder_type").ToString()]</InArgument>
+                </Assign.Value>
               </Assign>
-
-              <Assign sap2010:WorkflowViewState.IdRef="Assign_ApId">
-                <Assign.To><OutArgument x:TypeArguments="x:Int32">[ApptId]</OutArgument></Assign.To>
-                <Assign.Value><InArgument x:TypeArguments="x:Int32">[Integer.Parse(Item("appointment_id").ToString())]</InArgument></Assign.Value>
+              <Assign sap:VirtualizedContainerService.HintSize="616,174.4" sap2010:WorkflowViewState.IdRef="Assign_ApId">
+                <Assign.To>
+                  <OutArgument x:TypeArguments="x:Int32">[ApptId]</OutArgument>
+                </Assign.To>
+                <Assign.Value>
+                  <InArgument x:TypeArguments="x:Int32">[Integer.Parse(Item("appointment_id").ToString())]</InArgument>
+                </Assign.Value>
               </Assign>
-
-              <Assign sap2010:WorkflowViewState.IdRef="Assign_ApRef">
-                <Assign.To><OutArgument x:TypeArguments="x:String">[ApptRef]</OutArgument></Assign.To>
-                <Assign.Value><InArgument x:TypeArguments="x:String">[Item("reference_no").ToString()]</InArgument></Assign.Value>
+              <Assign sap:VirtualizedContainerService.HintSize="616,174.4" sap2010:WorkflowViewState.IdRef="Assign_ApRef">
+                <Assign.To>
+                  <OutArgument x:TypeArguments="x:String">[ApptRef]</OutArgument>
+                </Assign.To>
+                <Assign.Value>
+                  <InArgument x:TypeArguments="x:String">[Item("reference_no").ToString()]</InArgument>
+                </Assign.Value>
               </Assign>
-
-              <Assign sap2010:WorkflowViewState.IdRef="Assign_ApDt">
-                <Assign.To><OutArgument x:TypeArguments="x:String">[ApptDateTime]</OutArgument></Assign.To>
-                <Assign.Value><InArgument x:TypeArguments="x:String">[Item("appointment_datetime").ToString()]</InArgument></Assign.Value>
+              <Assign sap:VirtualizedContainerService.HintSize="616,174.4" sap2010:WorkflowViewState.IdRef="Assign_ApDt">
+                <Assign.To>
+                  <OutArgument x:TypeArguments="x:String">[ApptDateTime]</OutArgument>
+                </Assign.To>
+                <Assign.Value>
+                  <InArgument x:TypeArguments="x:String">[Item("appointment_datetime").ToString()]</InArgument>
+                </Assign.Value>
               </Assign>
-
-              <Assign sap2010:WorkflowViewState.IdRef="Assign_ApDoc">
-                <Assign.To><OutArgument x:TypeArguments="x:String">[DoctorName]</OutArgument></Assign.To>
-                <Assign.Value><InArgument x:TypeArguments="x:String">[If(Item("doctor_name") Is Nothing, "", Item("doctor_name").ToString())]</InArgument></Assign.Value>
+              <Assign sap:VirtualizedContainerService.HintSize="616,174.4" sap2010:WorkflowViewState.IdRef="Assign_ApDoc">
+                <Assign.To>
+                  <OutArgument x:TypeArguments="x:String">[DoctorName]</OutArgument>
+                </Assign.To>
+                <Assign.Value>
+                  <InArgument x:TypeArguments="x:String">[If(Item("doctor_name") Is Nothing, "", Item("doctor_name").ToString())]</InArgument>
+                </Assign.Value>
               </Assign>
-
-              <Assign sap2010:WorkflowViewState.IdRef="Assign_ApDept">
-                <Assign.To><OutArgument x:TypeArguments="x:String">[Department]</OutArgument></Assign.To>
-                <Assign.Value><InArgument x:TypeArguments="x:String">[If(Item("department") Is Nothing, "", Item("department").ToString())]</InArgument></Assign.Value>
+              <Assign sap:VirtualizedContainerService.HintSize="616,174.4" sap2010:WorkflowViewState.IdRef="Assign_ApDept">
+                <Assign.To>
+                  <OutArgument x:TypeArguments="x:String">[Department]</OutArgument>
+                </Assign.To>
+                <Assign.Value>
+                  <InArgument x:TypeArguments="x:String">[If(Item("department") Is Nothing, "", Item("department").ToString())]</InArgument>
+                </Assign.Value>
               </Assign>
-
-              <Assign sap2010:WorkflowViewState.IdRef="Assign_ApPrio">
-                <Assign.To><OutArgument x:TypeArguments="x:String">[Priority]</OutArgument></Assign.To>
-                <Assign.Value><InArgument x:TypeArguments="x:String">[If(Item("priority") Is Nothing, "NORMAL", Item("priority").ToString())]</InArgument></Assign.Value>
+              <Assign sap:VirtualizedContainerService.HintSize="616,174.4" sap2010:WorkflowViewState.IdRef="Assign_ApPrio">
+                <Assign.To>
+                  <OutArgument x:TypeArguments="x:String">[Priority]</OutArgument>
+                </Assign.To>
+                <Assign.Value>
+                  <InArgument x:TypeArguments="x:String">[If(Item("priority") Is Nothing, "NORMAL", Item("priority").ToString())]</InArgument>
+                </Assign.Value>
               </Assign>
-
               <Assign sap2010:WorkflowViewState.IdRef="Assign_PName">
-                <Assign.To><OutArgument x:TypeArguments="x:String">[PatientName]</OutArgument></Assign.To>
-                <Assign.Value><InArgument x:TypeArguments="x:String">[If(Item("patient") IsNot Nothing AndAlso Item("patient")("full_name") IsNot Nothing, Item("patient")("full_name").ToString(), "")]</InArgument></Assign.Value>
+                <Assign.To>
+                  <OutArgument x:TypeArguments="x:String">[PatientName]</OutArgument>
+                </Assign.To>
+                <Assign.Value>
+                  <InArgument x:TypeArguments="x:String">[If(Item("patient") IsNot Nothing AndAlso Item("patient")("full_name") IsNot Nothing, Item("patient")("full_name").ToString(), "")]</InArgument>
+                </Assign.Value>
               </Assign>
-
               <Assign sap2010:WorkflowViewState.IdRef="Assign_Phone">
-                <Assign.To><OutArgument x:TypeArguments="x:String">[Phone]</OutArgument></Assign.To>
-                <Assign.Value><InArgument x:TypeArguments="x:String">[If(Item("patient") IsNot Nothing AndAlso Item("patient")("phone") IsNot Nothing, Item("patient")("phone").ToString(), "")]</InArgument></Assign.Value>
+                <Assign.To>
+                  <OutArgument x:TypeArguments="x:String">[Phone]</OutArgument>
+                </Assign.To>
+                <Assign.Value>
+                  <InArgument x:TypeArguments="x:String">[If(Item("patient") IsNot Nothing AndAlso Item("patient")("phone") IsNot Nothing, Item("patient")("phone").ToString(), "")]</InArgument>
+                </Assign.Value>
               </Assign>
-
               <Assign sap2010:WorkflowViewState.IdRef="Assign_Email">
-                <Assign.To><OutArgument x:TypeArguments="x:String">[Email]</OutArgument></Assign.To>
-                <Assign.Value><InArgument x:TypeArguments="x:String">[If(Item("patient") IsNot Nothing AndAlso Item("patient")("email") IsNot Nothing AndAlso Item("patient")("email").Type &lt;&gt; Newtonsoft.Json.Linq.JTokenType.Null, Item("patient")("email").ToString(), "")]</InArgument></Assign.Value>
+                <Assign.To>
+                  <OutArgument x:TypeArguments="x:String">[Email]</OutArgument>
+                </Assign.To>
+                <Assign.Value>
+                  <InArgument x:TypeArguments="x:String">[If(Item("patient") IsNot Nothing AndAlso Item("patient")("email") IsNot Nothing AndAlso Item("patient")("email").Type &lt;&gt; Newtonsoft.Json.Linq.JTokenType.Null, Item("patient")("email").ToString(), "")]</InArgument>
+                </Assign.Value>
               </Assign>
-
               <Assign sap2010:WorkflowViewState.IdRef="Assign_Sms">
-                <Assign.To><OutArgument x:TypeArguments="x:Boolean">[SmsConsent]</OutArgument></Assign.To>
-                <Assign.Value><InArgument x:TypeArguments="x:Boolean">[Item("patient") IsNot Nothing AndAlso Item("patient")("sms_consent") IsNot Nothing AndAlso Boolean.Parse(Item("patient")("sms_consent").ToString())]</InArgument></Assign.Value>
+                <Assign.To>
+                  <OutArgument x:TypeArguments="x:Boolean">[SmsConsent]</OutArgument>
+                </Assign.To>
+                <Assign.Value>
+                  <InArgument x:TypeArguments="x:Boolean">[Item("patient") IsNot Nothing AndAlso Item("patient")("sms_consent") IsNot Nothing AndAlso Boolean.Parse(Item("patient")("sms_consent").ToString())]</InArgument>
+                </Assign.Value>
               </Assign>
-
               <Assign sap2010:WorkflowViewState.IdRef="Assign_EmC">
-                <Assign.To><OutArgument x:TypeArguments="x:Boolean">[EmailConsent]</OutArgument></Assign.To>
-                <Assign.Value><InArgument x:TypeArguments="x:Boolean">[Item("patient") IsNot Nothing AndAlso Item("patient")("email_consent") IsNot Nothing AndAlso Boolean.Parse(Item("patient")("email_consent").ToString())]</InArgument></Assign.Value>
+                <Assign.To>
+                  <OutArgument x:TypeArguments="x:Boolean">[EmailConsent]</OutArgument>
+                </Assign.To>
+                <Assign.Value>
+                  <InArgument x:TypeArguments="x:Boolean">[Item("patient") IsNot Nothing AndAlso Item("patient")("email_consent") IsNot Nothing AndAlso Boolean.Parse(Item("patient")("email_consent").ToString())]</InArgument>
+                </Assign.Value>
               </Assign>
-
               <Assign sap2010:WorkflowViewState.IdRef="Assign_Pref">
-                <Assign.To><OutArgument x:TypeArguments="x:String">[PrefChannel]</OutArgument></Assign.To>
-                <Assign.Value><InArgument x:TypeArguments="x:String">[If(Item("patient") IsNot Nothing AndAlso Item("patient")("preferred_channel") IsNot Nothing, Item("patient")("preferred_channel").ToString(), "SMS")]</InArgument></Assign.Value>
+                <Assign.To>
+                  <OutArgument x:TypeArguments="x:String">[PrefChannel]</OutArgument>
+                </Assign.To>
+                <Assign.Value>
+                  <InArgument x:TypeArguments="x:String">[If(Item("patient") IsNot Nothing AndAlso Item("patient")("preferred_channel") IsNot Nothing, Item("patient")("preferred_channel").ToString(), "SMS")]</InArgument>
+                </Assign.Value>
               </Assign>
-
-              <!-- Idempotency: has a SENT notification of this type already been logged? -->
-              <ui:InvokeWorkflowFile DisplayName="GET existing notifications"
-                sap2010:WorkflowViewState.IdRef="Invoke_GetNotifs"
-                WorkflowFileName="..\..\shared\HMS_Client.xaml">
+              <ui:InvokeWorkflowFile ArgumentsVariable="{x:Null}" ContinueOnError="{x:Null}" DisplayName="GET existing notifications" sap2010:WorkflowViewState.IdRef="Invoke_GetNotifs" UnSafe="False" WorkflowFileName="..\..\shared\HMS_Client.xaml">
                 <ui:InvokeWorkflowFile.Arguments>
                   <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
-                  <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+                  <InArgument x:TypeArguments="ss:SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
                   <InArgument x:TypeArguments="x:String" x:Key="in_Method">["GET"]</InArgument>
                   <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/notifications?appointment_id=" &amp; ApptId.ToString() &amp; "&amp;type=" &amp; ReminderType &amp; "&amp;status=SENT"]</InArgument>
                   <InArgument x:TypeArguments="x:String" x:Key="in_Body">[""]</InArgument>
@@ -290,50 +311,41 @@ out_All = merged">
                   <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
                 </ui:InvokeWorkflowFile.Arguments>
               </ui:InvokeWorkflowFile>
-
               <Assign sap2010:WorkflowViewState.IdRef="Assign_Already">
-                <Assign.To><OutArgument x:TypeArguments="x:Boolean">[AlreadySent]</OutArgument></Assign.To>
-                <Assign.Value><InArgument x:TypeArguments="x:Boolean">[Not String.IsNullOrWhiteSpace(ResponseJson) AndAlso Newtonsoft.Json.Linq.JArray.Parse(ResponseJson).Count &gt; 0]</InArgument></Assign.Value>
+                <Assign.To>
+                  <OutArgument x:TypeArguments="x:Boolean">[AlreadySent]</OutArgument>
+                </Assign.To>
+                <Assign.Value>
+                  <InArgument x:TypeArguments="x:Boolean">[Not String.IsNullOrWhiteSpace(ResponseJson) AndAlso Newtonsoft.Json.Linq.JArray.Parse(ResponseJson).Count &gt; 0]</InArgument>
+                </Assign.Value>
               </Assign>
-
-              <If Condition="[AlreadySent]" sap2010:WorkflowViewState.IdRef="If_Already">
+              <If Condition="[AlreadySent]" sap:VirtualizedContainerService.HintSize="451.2,996.8" sap2010:WorkflowViewState.IdRef="If_Already">
                 <If.Then>
-                  <Sequence sap2010:WorkflowViewState.IdRef="Seq_Already">
-                    <Assign sap2010:WorkflowViewState.IdRef="Assign_IncSkip">
-                      <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Skipped]</OutArgument></Assign.To>
-                      <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Skipped + 1]</InArgument></Assign.Value>
+                  <Sequence DisplayName="Then" sap:VirtualizedContainerService.HintSize="449.6,400" sap2010:WorkflowViewState.IdRef="Seq_Already">
+                    <sap:WorkflowViewStateService.ViewState>
+                      <scg:Dictionary x:TypeArguments="x:String, x:Object">
+                        <x:Boolean x:Key="IsExpanded">True</x:Boolean>
+                      </scg:Dictionary>
+                    </sap:WorkflowViewStateService.ViewState>
+                    <Assign sap:VirtualizedContainerService.HintSize="416,174.4" sap2010:WorkflowViewState.IdRef="Assign_IncSkip">
+                      <Assign.To>
+                        <OutArgument x:TypeArguments="x:Int32">[out_Skipped]</OutArgument>
+                      </Assign.To>
+                      <Assign.Value>
+                        <InArgument x:TypeArguments="x:Int32">[out_Skipped + 1]</InArgument>
+                      </Assign.Value>
                     </Assign>
-                    <ui:LogMessage Level="Info"
-                      Message="[&quot;Skip &quot; &amp; ApptRef &amp; &quot;/&quot; &amp; ReminderType &amp; &quot; — already sent&quot;]"
-                      sap2010:WorkflowViewState.IdRef="Log_Skip" />
+                    <ui:LogMessage sap:VirtualizedContainerService.HintSize="416,165.6" sap2010:WorkflowViewState.IdRef="Log_Skip" Level="Info" Message="[&quot;Skip &quot; &amp; ApptRef &amp; &quot;/&quot; &amp; ReminderType &amp; &quot; — already sent&quot;]" />
                   </Sequence>
                 </If.Then>
                 <If.Else>
-                  <Sequence DisplayName="Resolve channels and send" sap2010:WorkflowViewState.IdRef="Seq_Send">
-                    <ui:InvokeCode DisplayName="Resolve channels"
-                      sap2010:WorkflowViewState.IdRef="InvokeCode_Chan"
-                      Language="VBNet"
-                      Code="Dim result As New System.Collections.Generic.List(Of String)()
-Dim smsOk As Boolean = in_SmsConsent AndAlso Not String.IsNullOrEmpty(in_Phone) AndAlso System.Text.RegularExpressions.Regex.IsMatch(in_Phone, &quot;^\+[1-9]\d{9,14}$&quot;)
-Dim emOk As Boolean = in_EmailConsent AndAlso Not String.IsNullOrEmpty(in_Email) AndAlso in_Email.Contains(&quot;@&quot;)
-
-Dim escalate As Boolean = (in_Type = &quot;REMINDER_2H&quot;) AndAlso (in_Priority = &quot;URGENT&quot; OrElse in_Priority = &quot;HIGH&quot;)
-If escalate Then
-    If smsOk Then result.Add(&quot;SMS&quot;)
-    If emOk Then result.Add(&quot;EMAIL&quot;)
-Else
-    If in_Pref = &quot;SMS&quot; Then
-        If smsOk Then result.Add(&quot;SMS&quot;) ElseIf emOk Then result.Add(&quot;EMAIL&quot;)
-    ElseIf in_Pref = &quot;EMAIL&quot; Then
-        If emOk Then result.Add(&quot;EMAIL&quot;) ElseIf smsOk Then result.Add(&quot;SMS&quot;)
-    ElseIf in_Pref = &quot;BOTH&quot; Then
-        If smsOk Then result.Add(&quot;SMS&quot;)
-        If emOk Then result.Add(&quot;EMAIL&quot;)
-    Else
-        If smsOk Then result.Add(&quot;SMS&quot;) ElseIf emOk Then result.Add(&quot;EMAIL&quot;)
-    End If
-End If
-out_Channels = result">
+                  <Sequence DisplayName="Resolve channels and send" sap:VirtualizedContainerService.HintSize="449.6,458.4" sap2010:WorkflowViewState.IdRef="Seq_Send">
+                    <sap:WorkflowViewStateService.ViewState>
+                      <scg:Dictionary x:TypeArguments="x:String, x:Object">
+                        <x:Boolean x:Key="IsExpanded">True</x:Boolean>
+                      </scg:Dictionary>
+                    </sap:WorkflowViewStateService.ViewState>
+                    <ui:InvokeCode ContinueOnError="{x:Null}" Code="Dim result As New System.Collections.Generic.List(Of String)() : Dim smsOk As Boolean = in_SmsConsent AndAlso Not String.IsNullOrEmpty(in_Phone) AndAlso System.Text.RegularExpressions.Regex.IsMatch(in_Phone, &quot;^\+[1-9]\d{9,14}$&quot;) : Dim emOk As Boolean = in_EmailConsent AndAlso Not String.IsNullOrEmpty(in_Email) AndAlso in_Email.Contains(&quot;@&quot;) : Dim escalate As Boolean = (in_Type = &quot;REMINDER_2H&quot;) AndAlso (in_Priority = &quot;URGENT&quot; OrElse in_Priority = &quot;HIGH&quot;) : Dim useBoth As Boolean = escalate OrElse in_Pref = &quot;BOTH&quot; : Dim preferEmail As Boolean = (in_Pref = &quot;EMAIL&quot;) : Dim useSms As Boolean = smsOk AndAlso (useBoth OrElse Not preferEmail OrElse Not emOk) : Dim useEmail As Boolean = emOk AndAlso (useBoth OrElse preferEmail OrElse Not smsOk) : If useSms Then result.Add(&quot;SMS&quot;) : If useEmail Then result.Add(&quot;EMAIL&quot;) : out_Channels = result" DisplayName="Resolve channels" sap:VirtualizedContainerService.HintSize="416,196.8" sap2010:WorkflowViewState.IdRef="InvokeCode_Chan">
                       <ui:InvokeCode.Arguments>
                         <InArgument x:TypeArguments="x:String" x:Key="in_Type">[ReminderType]</InArgument>
                         <InArgument x:TypeArguments="x:String" x:Key="in_Priority">[Priority]</InArgument>
@@ -345,46 +357,52 @@ out_Channels = result">
                         <OutArgument x:TypeArguments="scg:List(x:String)" x:Key="out_Channels">[Channels]</OutArgument>
                       </ui:InvokeCode.Arguments>
                     </ui:InvokeCode>
-
-                    <If Condition="[Channels.Count = 0]" sap2010:WorkflowViewState.IdRef="If_NoChan">
+                    <If Condition="[Channels.Count = 0]" sap:VirtualizedContainerService.HintSize="416,201.6" sap2010:WorkflowViewState.IdRef="If_NoChan">
                       <If.Then>
-                        <Sequence sap2010:WorkflowViewState.IdRef="Seq_NoChan">
+                        <Sequence DisplayName="Then" sap2010:WorkflowViewState.IdRef="Seq_NoChan">
                           <Assign sap2010:WorkflowViewState.IdRef="Assign_SkipNoChan">
-                            <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Skipped]</OutArgument></Assign.To>
-                            <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Skipped + 1]</InArgument></Assign.Value>
+                            <Assign.To>
+                              <OutArgument x:TypeArguments="x:Int32">[out_Skipped]</OutArgument>
+                            </Assign.To>
+                            <Assign.Value>
+                              <InArgument x:TypeArguments="x:Int32">[out_Skipped + 1]</InArgument>
+                            </Assign.Value>
                           </Assign>
-                          <ui:LogMessage Level="Info"
-                            Message="[&quot;Skip &quot; &amp; ApptRef &amp; &quot; — no channel with consent&quot;]"
-                            sap2010:WorkflowViewState.IdRef="Log_NoChan" />
+                          <ui:LogMessage sap2010:WorkflowViewState.IdRef="Log_NoChan" Level="Info" Message="[&quot;Skip &quot; &amp; ApptRef &amp; &quot; — no channel with consent&quot;]" />
                         </Sequence>
                       </If.Then>
                       <If.Else>
-                        <Sequence sap2010:WorkflowViewState.IdRef="Seq_HasChan">
+                        <Sequence DisplayName="Else" sap2010:WorkflowViewState.IdRef="Seq_HasChan">
                           <Assign sap2010:WorkflowViewState.IdRef="Assign_Body">
-                            <Assign.To><OutArgument x:TypeArguments="x:String">[MsgBody]</OutArgument></Assign.To>
-                            <Assign.Value><InArgument x:TypeArguments="x:String">[in_HospitalName &amp; If(ReminderType = "REMINDER_24H", " reminder (24h): ", " reminder (2h): ") &amp; ApptRef &amp; " with " &amp; DoctorName &amp; " on " &amp; ApptDateTime.Replace("T", " ") &amp; ". Reply STOP to unsubscribe."]</InArgument></Assign.Value>
+                            <Assign.To>
+                              <OutArgument x:TypeArguments="x:String">[MsgBody]</OutArgument>
+                            </Assign.To>
+                            <Assign.Value>
+                              <InArgument x:TypeArguments="x:String">[in_HospitalName &amp; If(ReminderType = "REMINDER_24H", " reminder (24h): ", " reminder (2h): ") &amp; ApptRef &amp; " with " &amp; DoctorName &amp; " on " &amp; ApptDateTime.Replace("T", " ") &amp; ". Reply STOP to unsubscribe."]</InArgument>
+                            </Assign.Value>
                           </Assign>
-
-                          <ForEach x:TypeArguments="x:String" DisplayName="Send on each channel"
-                            Values="[Channels]"
-                            sap2010:WorkflowViewState.IdRef="ForEach_Chan">
+                          <ForEach x:TypeArguments="x:String" DisplayName="Send on each channel" sap2010:WorkflowViewState.IdRef="ForEach_Chan" Values="[Channels]">
                             <ActivityAction x:TypeArguments="x:String">
-                              <ActivityAction.Argument><DelegateInArgument x:TypeArguments="x:String" Name="ch" /></ActivityAction.Argument>
+                              <ActivityAction.Argument>
+                                <DelegateInArgument x:TypeArguments="x:String" Name="ch" />
+                              </ActivityAction.Argument>
                               <Sequence sap2010:WorkflowViewState.IdRef="Seq_SendChan">
                                 <Assign sap2010:WorkflowViewState.IdRef="Assign_CurChan">
-                                  <Assign.To><OutArgument x:TypeArguments="x:String">[CurrentChannel]</OutArgument></Assign.To>
-                                  <Assign.Value><InArgument x:TypeArguments="x:String">[ch]</InArgument></Assign.Value>
+                                  <Assign.To>
+                                    <OutArgument x:TypeArguments="x:String">[CurrentChannel]</OutArgument>
+                                  </Assign.To>
+                                  <Assign.Value>
+                                    <InArgument x:TypeArguments="x:String">[ch]</InArgument>
+                                  </Assign.Value>
                                 </Assign>
                                 <If Condition="[ch = &quot;SMS&quot;]" sap2010:WorkflowViewState.IdRef="If_ChSMS">
                                   <If.Then>
-                                    <ui:InvokeWorkflowFile
-                                      sap2010:WorkflowViewState.IdRef="Invoke_SMS"
-                                      WorkflowFileName="..\..\shared\SendSMS.xaml">
+                                    <ui:InvokeWorkflowFile ArgumentsVariable="{x:Null}" ContinueOnError="{x:Null}" sap2010:WorkflowViewState.IdRef="Invoke_SMS" UnSafe="False" WorkflowFileName="..\..\shared\SendSMS.xaml">
                                       <ui:InvokeWorkflowFile.Arguments>
                                         <InArgument x:TypeArguments="x:String" x:Key="in_To">[Phone]</InArgument>
                                         <InArgument x:TypeArguments="x:String" x:Key="in_Body">[MsgBody]</InArgument>
                                         <InArgument x:TypeArguments="x:String" x:Key="in_AccountSid">[in_TwilioSid]</InArgument>
-                                        <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_AuthToken">[in_TwilioAuth]</InArgument>
+                                        <InArgument x:TypeArguments="ss:SecureString" x:Key="in_AuthToken">[in_TwilioAuth]</InArgument>
                                         <InArgument x:TypeArguments="x:String" x:Key="in_FromNumber">[in_TwilioFrom]</InArgument>
                                         <InArgument x:TypeArguments="x:Boolean" x:Key="in_DryRun">[in_DryRun]</InArgument>
                                         <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Success">[NotifOk]</OutArgument>
@@ -395,14 +413,12 @@ out_Channels = result">
                                     </ui:InvokeWorkflowFile>
                                   </If.Then>
                                   <If.Else>
-                                    <ui:InvokeWorkflowFile
-                                      sap2010:WorkflowViewState.IdRef="Invoke_Em"
-                                      WorkflowFileName="..\..\shared\SendEmail.xaml">
+                                    <ui:InvokeWorkflowFile ArgumentsVariable="{x:Null}" ContinueOnError="{x:Null}" sap2010:WorkflowViewState.IdRef="Invoke_Em" UnSafe="False" WorkflowFileName="..\..\shared\SendEmail.xaml">
                                       <ui:InvokeWorkflowFile.Arguments>
                                         <InArgument x:TypeArguments="x:String" x:Key="in_To">[Email]</InArgument>
                                         <InArgument x:TypeArguments="x:String" x:Key="in_Subject">[in_HospitalName &amp; " reminder — " &amp; ApptRef]</InArgument>
                                         <InArgument x:TypeArguments="x:String" x:Key="in_HtmlBody">["&lt;p&gt;" &amp; MsgBody &amp; "&lt;/p&gt;"]</InArgument>
-                                        <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_SendGridKey]</InArgument>
+                                        <InArgument x:TypeArguments="ss:SecureString" x:Key="in_ApiKey">[in_SendGridKey]</InArgument>
                                         <InArgument x:TypeArguments="x:String" x:Key="in_FromEmail">[in_SendGridFrom]</InArgument>
                                         <InArgument x:TypeArguments="x:Boolean" x:Key="in_DryRun">[in_DryRun]</InArgument>
                                         <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Success">[NotifOk]</OutArgument>
@@ -413,14 +429,10 @@ out_Channels = result">
                                     </ui:InvokeWorkflowFile>
                                   </If.Else>
                                 </If>
-
-                                <!-- Log the notification -->
-                                <ui:InvokeWorkflowFile DisplayName="POST notification"
-                                  sap2010:WorkflowViewState.IdRef="Invoke_LogN"
-                                  WorkflowFileName="..\..\shared\HMS_Client.xaml">
+                                <ui:InvokeWorkflowFile ArgumentsVariable="{x:Null}" ContinueOnError="{x:Null}" DisplayName="POST notification" sap2010:WorkflowViewState.IdRef="Invoke_LogN" UnSafe="False" WorkflowFileName="..\..\shared\HMS_Client.xaml">
                                   <ui:InvokeWorkflowFile.Arguments>
                                     <InArgument x:TypeArguments="x:String" x:Key="in_BaseUrl">[in_BaseUrl]</InArgument>
-                                    <InArgument x:TypeArguments="s:Security.SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
+                                    <InArgument x:TypeArguments="ss:SecureString" x:Key="in_ApiKey">[in_ApiKey]</InArgument>
                                     <InArgument x:TypeArguments="x:String" x:Key="in_Method">["POST"]</InArgument>
                                     <InArgument x:TypeArguments="x:String" x:Key="in_Path">["/notifications"]</InArgument>
                                     <InArgument x:TypeArguments="x:String" x:Key="in_Body">[New Newtonsoft.Json.Linq.JObject(New Newtonsoft.Json.Linq.JProperty("appointment_id", ApptId), New Newtonsoft.Json.Linq.JProperty("type", ReminderType), New Newtonsoft.Json.Linq.JProperty("channel", ch), New Newtonsoft.Json.Linq.JProperty("recipient", If(ch = "SMS", Phone, Email)), New Newtonsoft.Json.Linq.JProperty("template_id", If(ReminderType = "REMINDER_24H", "TPL_REMINDER_24H_EN", "TPL_REMINDER_2H_EN")), New Newtonsoft.Json.Linq.JProperty("status", If(NotifOk, "SENT", "FAILED")), New Newtonsoft.Json.Linq.JProperty("provider", If(in_DryRun, "DRYRUN", If(ch = "SMS", "TWILIO", "SENDGRID"))), New Newtonsoft.Json.Linq.JProperty("provider_message_id", NotifId), New Newtonsoft.Json.Linq.JProperty("attempt_no", 1), New Newtonsoft.Json.Linq.JProperty("error_code", NotifError), New Newtonsoft.Json.Linq.JProperty("body_preview", MsgBody.Substring(0, Math.Min(200, MsgBody.Length)))).ToString()]</InArgument>
@@ -431,18 +443,25 @@ out_Channels = result">
                                     <OutArgument x:TypeArguments="x:Boolean" x:Key="out_Retryable">[Retryable]</OutArgument>
                                   </ui:InvokeWorkflowFile.Arguments>
                                 </ui:InvokeWorkflowFile>
-
                                 <If Condition="[NotifOk]" sap2010:WorkflowViewState.IdRef="If_NotifOk">
                                   <If.Then>
                                     <Assign sap2010:WorkflowViewState.IdRef="Assign_IncOk">
-                                      <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Sent]</OutArgument></Assign.To>
-                                      <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Sent + 1]</InArgument></Assign.Value>
+                                      <Assign.To>
+                                        <OutArgument x:TypeArguments="x:Int32">[out_Sent]</OutArgument>
+                                      </Assign.To>
+                                      <Assign.Value>
+                                        <InArgument x:TypeArguments="x:Int32">[out_Sent + 1]</InArgument>
+                                      </Assign.Value>
                                     </Assign>
                                   </If.Then>
                                   <If.Else>
                                     <Assign sap2010:WorkflowViewState.IdRef="Assign_IncFail">
-                                      <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_Failed]</OutArgument></Assign.To>
-                                      <Assign.Value><InArgument x:TypeArguments="x:Int32">[out_Failed + 1]</InArgument></Assign.Value>
+                                      <Assign.To>
+                                        <OutArgument x:TypeArguments="x:Int32">[out_Failed]</OutArgument>
+                                      </Assign.To>
+                                      <Assign.Value>
+                                        <InArgument x:TypeArguments="x:Int32">[out_Failed + 1]</InArgument>
+                                      </Assign.Value>
                                     </Assign>
                                   </If.Else>
                                 </If>
@@ -455,19 +474,19 @@ out_Channels = result">
                   </Sequence>
                 </If.Else>
               </If>
-
               <Assign sap2010:WorkflowViewState.IdRef="Assign_NextIdx">
-                <Assign.To><OutArgument x:TypeArguments="x:Int32">[Idx]</OutArgument></Assign.To>
-                <Assign.Value><InArgument x:TypeArguments="x:Int32">[Idx + 1]</InArgument></Assign.Value>
+                <Assign.To>
+                  <OutArgument x:TypeArguments="x:Int32">[Idx]</OutArgument>
+                </Assign.To>
+                <Assign.Value>
+                  <InArgument x:TypeArguments="x:Int32">[Idx + 1]</InArgument>
+                </Assign.Value>
               </Assign>
             </Sequence>
           </While>
         </Sequence>
       </If.Else>
     </If>
-
-    <ui:LogMessage DisplayName="Log finished" Level="Info"
-      Message="[&quot;ReminderBot finished. Sent=&quot; &amp; out_Sent.ToString() &amp; &quot; Skipped=&quot; &amp; out_Skipped.ToString() &amp; &quot; Failed=&quot; &amp; out_Failed.ToString()]"
-      sap2010:WorkflowViewState.IdRef="Log_End" />
+    <ui:LogMessage DisplayName="Log finished" sap:VirtualizedContainerService.HintSize="729.6,165.6" sap2010:WorkflowViewState.IdRef="Log_End" Level="Info" Message="[&quot;ReminderBot finished. Sent=&quot; &amp; out_Sent.ToString() &amp; &quot; Skipped=&quot; &amp; out_Skipped.ToString() &amp; &quot; Failed=&quot; &amp; out_Failed.ToString()]" />
   </Sequence>
 </Activity>
