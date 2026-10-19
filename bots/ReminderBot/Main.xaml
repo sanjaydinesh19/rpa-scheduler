@@ -87,7 +87,7 @@ belt-and-braces here: a run outside quiet hours logs and returns.</sap2010:Annot
       <Variable x:TypeArguments="x:String" Name="NotifError" />
       <Variable x:TypeArguments="x:Boolean" Name="NotifRetryable" />
       <Variable x:TypeArguments="jl:JObject" Name="J" />
-      <Variable x:TypeArguments="x:DateTime" Name="Now" />
+      <Variable x:TypeArguments="s:DateTime" Name="Now" />
       <Variable x:TypeArguments="x:String" Name="NowQs" />
       <Variable x:TypeArguments="x:String" Name="CurrentChannel" />
     </Sequence.Variables>
@@ -98,8 +98,8 @@ belt-and-braces here: a run outside quiet hours logs and returns.</sap2010:Annot
     </Assign>
 
     <Assign DisplayName="Resolve now" sap2010:WorkflowViewState.IdRef="Assign_Now">
-      <Assign.To><OutArgument x:TypeArguments="x:DateTime">[Now]</OutArgument></Assign.To>
-      <Assign.Value><InArgument x:TypeArguments="x:DateTime">[If(String.IsNullOrWhiteSpace(in_NowOverride), DateTime.Now, DateTime.Parse(in_NowOverride))]</InArgument></Assign.Value>
+      <Assign.To><OutArgument x:TypeArguments="s:DateTime">[Now]</OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="s:DateTime">[If(String.IsNullOrWhiteSpace(in_NowOverride), DateTime.Now, DateTime.Parse(in_NowOverride))]</InArgument></Assign.Value>
     </Assign>
 
     <Assign DisplayName="Build now= query"
