@@ -316,7 +316,7 @@
                   <OutArgument x:TypeArguments="x:Boolean">[AlreadySent]</OutArgument>
                 </Assign.To>
                 <Assign.Value>
-                  <InArgument x:TypeArguments="x:Boolean">[Not String.IsNullOrWhiteSpace(ResponseJson) AndAlso Newtonsoft.Json.Linq.JArray.Parse(ResponseJson).Count &gt; 0]</InArgument>
+                  <InArgument x:TypeArguments="x:Boolean">[Not String.IsNullOrWhiteSpace(ResponseJson) AndAlso ResponseJson.Trim() &lt;&gt; "[]"]</InArgument>
                 </Assign.Value>
               </Assign>
               <If Condition="[AlreadySent]" sap:VirtualizedContainerService.HintSize="451.2,996.8" sap2010:WorkflowViewState.IdRef="If_Already">
